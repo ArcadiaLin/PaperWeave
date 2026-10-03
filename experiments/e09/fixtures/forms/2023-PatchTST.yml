@@ -1,0 +1,98 @@
+# 入库表单样例 paper-form-v1：编译与 Commit 的检验夹具，只覆盖一张表的部分行，不是正式入库表单
+# 范围：PatchTST Table 3（S4.T3）中 ILI 与 ETTh1 两组行。假定 2023-DLinear 已先入库。
+
+form: paper-form-v1
+domain: ltsf
+material: {path: papers/2023-PatchTST/paper.md, sha256: d29e296b18e44b771c88f5ca33dcb72f59a68efd52d173125efea3ea2bd21646}
+
+paper:
+  labels: [Entity, Paper]
+  properties:
+    name: "A Time Series is Worth 64 Words: Long-term Forecasting with Transformers"
+    identifiers: ["arxiv:2211.14730"]
+    description: >
+      Proposes PatchTST, a Transformer for multivariate time series forecasting and
+      self-supervised representation learning based on patching and channel independence.
+
+refs:
+  ltsf:      {mention: LTSF, kind: Task}
+  etth1:     {mention: ETTh1, kind: Dataset}
+  ili:       {mention: ILI, kind: Dataset}
+  mse:       {mention: MSE, kind: Metric}
+  mae:       {mention: MAE, kind: Metric}
+  dlinear:   {mention: DLinear, kind: Method}       # 原文只写 DLinear，连母节点，不猜变体
+  fedformer: {mention: FEDformer, kind: Method}     # 原文只写 FEDformer，未注明 -f / -w
+  autoformer: {mention: Autoformer, kind: Method}
+
+objects:
+  patchtst:
+    labels: [Concept, Method]
+    properties:
+      name: PatchTST
+      definition: >
+        A Transformer encoder for time series that splits each univariate channel into
+        subseries-level patches used as input tokens, and processes channels independently
+        with shared weights.
+    rejected: []
+  informer:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: Informer, note: "Cited as (Zhou et al., 2021) [bib.bib42]."}
+    rejected: []
+  pyraformer:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: Pyraformer, note: "Cited as (Liu et al., 2022) [bib.bib27]."}
+    rejected: []
+  logtrans:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: LogTrans, note: "Cited as (Li et al., 2019) [bib.bib26]."}
+    rejected: []
+
+relationships: []   # 方法间关系不在单篇抽取中包办
+
+experiments:
+  - ref: x_t3
+    anchor: S4.T3
+    section: "4.1 Long-term Time series forecasting"
+    lines: [134, 166]
+    task: ltsf
+    text: >
+      Multivariate long-term forecasting on eight benchmarks with supervised PatchTST/64 and
+      PatchTST/42 against DLinear and Transformer-based baselines.
+    setting: >
+      Multivariate, supervised training. Variant labels as printed: PatchTST/64 uses 64 input
+      patches (L=512), PatchTST/42 uses 42 patches (L=336); both use patch length 16 and stride 8.
+      FEDformer, Autoformer and Informer were re-run with six look-back windows, best per task.
+    slots: {split: "convention:ltsf-autoformer"}
+    slot_basis: {split: "4.1 Long-term Time series forecasting::128:128"}   # "沿用前人设置"映射到切分约定的原文依据
+    columns:
+      - {subject: patchtst, variant: PatchTST/64, role: target,   metrics: [mse, mae], origin: own, slots: {lookback: "512"}}
+      - {subject: patchtst, variant: PatchTST/42, role: target,   metrics: [mse, mae], origin: own, slots: {lookback: "336"}}
+      - {subject: dlinear,     role: baseline, metrics: [mse, mae], origin: unstated, slots: {lookback: "336"}}
+      - {subject: fedformer,   role: baseline, metrics: [mse, mae], origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"},
+         slots: {lookback: "best-of{24,48,96,192,336,720}"}}
+      - {subject: autoformer,  role: baseline, metrics: [mse, mae], origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"},
+         slots: {lookback: "best-of{24,48,96,192,336,720}"}}
+      - {subject: informer,    role: baseline, metrics: [mse, mae], origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"},
+         slots: {lookback: "best-of{24,48,96,192,336,720}"}}
+      - {subject: pyraformer,  role: baseline, metrics: [mse, mae], origin: unstated}
+      - {subject: logtrans,    role: baseline, metrics: [mse, mae], origin: unstated}
+    # ILI 的回看窗口逐格覆盖（A.1.2 第 537 行）：DLinear L=104；三个重跑基线换一组候选；PatchTST 自身在 ILI 上未写明
+    x-ili-cells: &ili_cells   # x- 开头的键只作 YAML 复用，编译忽略
+      PatchTST/64: {lookback: null}
+      PatchTST/42: {lookback: null}
+      dlinear:     {lookback: "104"}
+      fedformer:   {lookback: "best-of{24,36,48,60,104,144}"}
+      autoformer:  {lookback: "best-of{24,36,48,60,104,144}"}
+      informer:    {lookback: "best-of{24,36,48,60,104,144}"}
+    rows:
+      - {data: ili, horizon: "24", line: 150, cells: *ili_cells, values: ["1.319", "0.754", "1.522", "0.814", "2.215", "1.081", "2.624", "1.095", "2.906", "1.182", "4.657", "1.449", "1.420", "2.012", "4.480", "1.444"]}
+      - {data: ili, horizon: "36", line: 151, cells: *ili_cells, values: ["1.579", "0.870", "1.430", "0.834", "1.963", "0.963", "2.516", "1.021", "2.585", "1.038", "4.650", "1.463", "7.394", "2.031", "4.799", "1.467"]}
+      - {data: ili, horizon: "48", line: 152, cells: *ili_cells, values: ["1.553", "0.815", "1.673", "0.854", "2.130", "1.024", "2.505", "1.041", "3.024", "1.145", "5.004", "1.542", "7.551", "2.057", "4.800", "1.468"]}
+      - {data: ili, horizon: "60", line: 153, cells: *ili_cells, values: ["1.470", "0.788", "1.529", "0.862", "2.368", "1.096", "2.742", "1.122", "2.761", "1.114", "5.071", "1.543", "7.662", "2.100", "5.278", "1.560"]}
+      - {data: etth1, horizon: "96",  line: 154, values: ["0.370", "0.400", "0.375", "0.399", "0.375", "0.399", "0.376", "0.415", "0.435", "0.446", "0.941", "0.769", "0.664", "0.612", "0.878", "0.740"]}
+      - {data: etth1, horizon: "192", line: 155, values: ["0.413", "0.429", "0.414", "0.421", "0.405", "0.416", "0.423", "0.446", "0.456", "0.457", "1.007", "0.786", "0.790", "0.681", "1.037", "0.824"]}
+      - {data: etth1, horizon: "336", line: 156, values: ["0.422", "0.440", "0.431", "0.436", "0.439", "0.443", "0.444", "0.462", "0.486", "0.487", "1.038", "0.784", "0.891", "0.738", "1.238", "0.932"]}
+      - {data: etth1, horizon: "720", line: 157, values: ["0.447", "0.468", "0.449", "0.466", "0.472", "0.490", "0.469", "0.492", "0.515", "0.517", "1.144", "0.857", "0.963", "0.782", "1.135", "0.852"]}

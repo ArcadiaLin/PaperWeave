@@ -246,7 +246,7 @@ D2 把四项可比性条件放进领域配置。它们在图中有不同的去�
 | Label | 作用 | 状态 | Property 与关系 |
 | --- | --- | --- | --- |
 | `NameKey` | 精确键注册表 | 新增 | **已定（2026-10-02）**。`key`（规范化名称、kind、scope 拼成的单个字符串，带唯一约束）、`normalized`、`raw`、`kind`、`scope`（global 或父对象 id）、`normalizer_ref`（属性不能存 map，编码为字符串，如 `name-key-v1@unicode-15.0.0`）、`status: active / ambiguous`、注册来源与提交者（`registered_from`、`registered_by`）；`(:NameKey)-[:NAMES]->(对象)` |
-| `Material` | 固定版本的材料 | 候选 | `path`、`format`、`content_hash`、`derived_from`（如原 PDF）、`created_at`；`(:Material)-[:MATERIAL_OF]->(:Entity:Paper)`；`FROM.material_ref` 引用其 id |
+| `Material` | 固定版本的材料 | 新增（2026-10-03，[Commit 契约](./commit_contract.md)） | `path`、`format`、`content_hash`、`derived_from`（如原 PDF）、`created_at`；`(:Material)-[:MATERIAL_OF]->(:Entity:Paper)`；`FROM.material_ref` 引用其 id |
 
 **为什么用 `NameKey`，而不是 `aliases` 列表。** 这是工程映射，不改变 D3 的设计：D3 中每个 alias 本来就是一条带属性的注册记录。
 
@@ -389,7 +389,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 12 | `revision`、`status`、`SUPERSEDES` | 等 Q2 | 第 1 节、6.2.5 |
 | 13 | Issue、Proposition 的归类 | 等 Q6，用 I4、I5 实例裁决 | 3.1 |
 | 14 | `IMPLEMENTS` 的依据、`INTRODUCES`、`RELATED_TO` | 等 I6 实例 | 6.2.3、6.2.6 |
-| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | E09 已实现种子部分；更新目前只能覆盖属性，不能撤销属性或 alias。入库表单的抽取口径（实例范围、方法变体、条件槽、来源性质、锚点核对）已定，见 [抽取原则](./extraction_principles.md)；编译规则与操作集待定 | `intents_decompose.md` §5 写路径 |
+| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | E09 已实现种子部分；更新目前只能覆盖属性，不能撤销属性或 alias。**已定（2026-10-03）**：抽取口径见 [抽取原则](./extraction_principles.md)，编译、操作集、检查分工、自然键与批次记录见 [Commit 契约](./commit_contract.md)；修订与撤回仍随 Q2 | `intents_decompose.md` §5 写路径 |
 | 16 | 唯一命名空间标识的后端约束 | 倾向先保持事务内复查；需要后端保证时仿 NameKey 建键节点 | 2.4 |
 | 17 | 语义候选的阈值或"可能不存在"提示 | 暂不设；等真实查询中外部否定的比例出来再定 | `intents_decompose.md` §4.1 |
 

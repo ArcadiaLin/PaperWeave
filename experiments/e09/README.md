@@ -20,6 +20,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     make check        # 自检：材料与种子目录、连库、确认不是 v1 库
     make seed         # 种子入库；重跑无副作用，有冲突或复核失败时返回非零
     make embed        # 建向量索引并补算向量；需要 embedding 服务（见 utils/embedding.py）
+    make compile      # 编译论文表单（不连库）；默认编译 fixtures/forms/ 下的夹具
     make lab          # JupyterLab，工作目录为 notebooks/
 
 ## 数据
@@ -38,12 +39,14 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     src/e09/              已确定的部分，脚本与 notebook 共用
     src/e09/operators/    中间件算子，一个算子一个文件，文件名即设计中的算子名
     src/e09/utils/        算子共用的底层部件，本身不是算子
+    fixtures/forms/       表单夹具：只覆盖一张表的部分行，用来检验编译与 Commit，不是正式入库表单
 
 | 位置 | 内容 |
 | --- | --- |
 | `config` | 路径与连接参数 |
 | `env_check` | 环境自检（`make check`） |
 | `seed` | 种子入库入口：固定写入顺序、读种子文件，逐批经 Commit 写入（`make seed`） |
+| `form` | 论文表单编译（不连库）：表单 → delta，报告错误与待确认项（`make compile`）；契约见 `docs/designs/v2/commit_contract.md` |
 | `operators/commit` | Commit：增量检查 → plan（dry_run）→ apply → 复核；目前只接受种子增量 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
@@ -53,11 +56,12 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `utils/ids` | 按 kind 顺序分配对象 id |
 | `utils/embedding` | 向量服务（与 e08 共用 Qwen3-Embedding-8B）、向量索引与补算（`make embed`） |
 | `utils/fusion` | 语义阶段的召回参数、分词与 RRF 融合 |
+| `utils/domain` | 领域配置：条件槽的取值语法、哪些槽印在行标签上、有名字的切分约定 |
 
 种子入库与失败路径演示见 `notebooks/01_seed_ingest.ipynb`，Resolve 与 Get 的用例见 `notebooks/02_resolve_get.ipynb`。尚未实现的算子列在 `operators/__init__.py`。
 
 ## 现在还不是什么
 
-还没有论文入库。入库表单、编译规则与 Content 侧的 `Commit` 校验在讨论确定后再写进
-`src/e09/`，并给 Makefile 加上可失败的复现目标；读取侧只有 Resolve 与 Get，其余算子尚未实现。notebook 只读写
+还没有论文入库。表单编译已实现（`form`），Commit 的论文增量（dry_run 中的引用解析与查重、
+Content 写入、批次记录）尚未实现；读取侧只有 Resolve 与 Get，其余算子尚未实现。notebook 只读写
 `data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。
