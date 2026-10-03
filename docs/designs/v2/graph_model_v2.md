@@ -153,7 +153,7 @@ id 级：   url = zhouhaoyi/ETDataset          → {ETT, ETTh1, ETTh2, ETTm1, ET
 
 | 次级 Label | 含义 | 状态 | v1 对应 | 说明 |
 | --- | --- | --- | --- | --- |
-| `Method` | 方法方案及方法类别 | 改写 | `Method` + `MethodConcept` | **已定（2026-10-02）**：合并为一个 kind，类别经 `BROADER` 表达（v1 的 `INSTANCE_OF` 与 `SUBTYPE_OF` 都并入）。代价是失去"具体方案 / 类别"的区分；若 I1 需要只取具体方案，加描述字段 `level: scheme / family`，不新增 kind |
+| `Method` | 方法方案及方法类别 | 改写 | `Method` + `MethodConcept` | **已定（2026-10-02）**：合并为一个 kind，类别经 `BROADER` 表达（v1 的 `INSTANCE_OF` 与 `SUBTYPE_OF` 都并入）。代价是失去"具体方案 / 类别"的区分；若 I1 需要只取具体方案，加描述字段 `level: scheme / family`，不新增 kind。**`BROADER` 不承担变体（已定，2026-10-03）**：变体与配置不建节点，作为结果列的变体标签记在实验中，见 [抽取原则](./extraction_principles.md) §2 |
 | `Task` | 研究任务 | 沿用 | `Task` | |
 | `Metric` | 指标 | 改写 | `Metric` | 归入 Concept；定义必须写明影响可比性的口径，如 @k 与计算方式（D2） |
 | `Protocol` | 评测协议或核验标准 | 新增 | 写在 Experiment 描述中 | 定义及修订有明确引用；一次实验实际采用的参数留在 Content 中（§3.4） |
@@ -232,7 +232,7 @@ D2 把四项可比性条件放进领域配置。它们在图中有不同的去�
 
 | 条件 | 去处 | 状态 |
 | --- | --- | --- |
-| 数据集版本与切分 | `USES` 指向 Split 或数据集，版本记在 `USES.version` 上（2.3） | 已定 |
+| 数据集版本与切分 | `USES` 指向 Split 或数据集，版本记在 `USES.version` 上（2.3）；原文只声明沿用某个切分约定时，记为结果行的 `split` 槽（`convention:<name>`），见 [抽取原则](./extraction_principles.md) §4 | 已定 |
 | 指标定义（含 @k） | `MEASURED_BY` 指向 Metric | 已定 |
 | 候选集或语料 | `USES {role: "retrieval_corpus"}` 指向 Dataset | 已定：新增 USES role，规则即可判定 |
 | 是否重排序 | `setting` 文本 | 已定：首版由 $A_{\text{pred}}$ 判断；I3 实例显示规则可以决定时再提升 |
@@ -331,7 +331,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 
 | Type | 端点 | 逻辑角色 | Property | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `BROADER` | Concept → 同 kind Concept | `Concept.broader` | | 改写 | 合并 v1 的 `INSTANCE_OF` 与 `SUBTYPE_OF`（见 3.1） |
+| `BROADER` | Concept → 同 kind Concept | `Concept.broader` | | 改写 | 合并 v1 的 `INSTANCE_OF` 与 `SUBTYPE_OF`（见 3.1）；不用于连接方法变体（已定，2026-10-03） |
 | `HAS_PART` | Method → Method | `Concept.parts` | | 改写 | 即 v1 的 `USES_COMPONENT`，方向不变：整体 → 组件 |
 | `ADDRESSES` | Method → Task | `Concept.addresses` | | 沿用 | v1 要求 anchor 并写"本文如何表述该任务"。这是来源化内容，重审：边上只留 `source_refs`，表述移到 Content |
 | `DERIVED_FROM` | Method → Method | | | 沿用 | 类别相同不推出沿用 |
@@ -382,14 +382,14 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 5 | 版本节点的建立时机与命名；版本未知时 Split 挂在哪里 | **已定（2026-10-02）**：修订级版本默认记在使用边的 `version` 上，只在版本自身需要挂结构时建节点；未写版本归原实体 | 2.3 |
 | 6 | ResultUnit 的边名、Label、`value` 类型 | **已定（2026-10-02）**：复用参与边；只带 `ResultUnit`；原文与数值都存，数值比较不理想时回退原文交 Agent | 4.3 |
 | 7 | 可比性条件哪些进入结构 | **已定（2026-10-02）**：版本、切分、指标、语料进入结构；重排序留在文本 | 4.4 |
-| 8 | Method 与 MethodConcept 合并 | **已定（2026-10-02）**：合并，用 `BROADER` | 3.1 |
+| 8 | Method 与 MethodConcept 合并 | **已定（2026-10-02）**：合并，用 `BROADER`；`BROADER` 不承担变体（2026-10-03，见 [抽取原则](./extraction_principles.md) §2） | 3.1 |
 | 9 | `Observation.kind` 改名为 `check_level` | **已定（2026-10-02）** | 4.2 |
 | 10 | `Metric.direction` 的位置 | **已定（2026-10-02）**：放在 Metric 上 | 3.2 |
 | 11 | Usage、Contribution、Assessment 的去留 | 等 Q5、Q1 | 4.1 |
 | 12 | `revision`、`status`、`SUPERSEDES` | 等 Q2 | 第 1 节、6.2.5 |
 | 13 | Issue、Proposition 的归类 | 等 Q6，用 I4、I5 实例裁决 | 3.1 |
 | 14 | `IMPLEMENTS` 的依据、`INTRODUCES`、`RELATED_TO` | 等 I6 实例 | 6.2.3、6.2.6 |
-| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | E09 已实现种子部分；更新目前只能覆盖属性，不能撤销属性或 alias。随入库表单剩余三项（实例范围、方法变体、条件槽）一起定 | `intents_decompose.md` §5 写路径 |
+| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | E09 已实现种子部分；更新目前只能覆盖属性，不能撤销属性或 alias。入库表单的抽取口径（实例范围、方法变体、条件槽、来源性质、锚点核对）已定，见 [抽取原则](./extraction_principles.md)；编译规则与操作集待定 | `intents_decompose.md` §5 写路径 |
 | 16 | 唯一命名空间标识的后端约束 | 倾向先保持事务内复查；需要后端保证时仿 NameKey 建键节点 | 2.4 |
 | 17 | 语义候选的阈值或"可能不存在"提示 | 暂不设；等真实查询中外部否定的比例出来再定 | `intents_decompose.md` §4.1 |
 
