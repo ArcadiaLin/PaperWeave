@@ -12,11 +12,11 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from ..config import NEO4J_DB
-from ..utils.graph import driver, q
-from ..utils.ids import IdAllocator
-from ..utils.namekey import NORMALIZER, name_key, normalize
-from ..utils.schema import FORM_ONLY, NAMESPACES, REL_RULES, REQUIRED, SEED_KINDS, SYMMETRIC
+from ...config import NEO4J_DB
+from ...utils.graph import driver, q
+from ...utils.ids import IdAllocator
+from ...utils.namekey import NORMALIZER, name_key, normalize
+from ...utils.schema import FORM_ONLY, NAMESPACES, REL_RULES, REQUIRED, SEED_KINDS, SYMMETRIC
 
 
 # ── 增量检查：与库无关 ──

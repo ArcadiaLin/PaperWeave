@@ -86,7 +86,7 @@ class Compiler:
     def node(self, where, entry) -> dict | None:
         """paper 与新对象：Label、必填字段、桩节点规则、标识与精确键。"""
         labels, props = entry.get("labels") or [], dict(entry.get("properties") or {})
-        if len(labels) != 2 or labels[1] not in KINDS.get(labels[0], ()):
+        if len(labels) != 2 or labels[0] not in REQUIRED or labels[1] not in KINDS[labels[0]]:
             self.error(where, f"labels 应为 [主 Label, kind]，实际是 {labels}")
             return None
         family, kind = labels
@@ -184,7 +184,7 @@ class Compiler:
 
     def ref(self, where, spec: dict) -> dict:
         if "mention" in spec:
-            if spec.get("kind") not in FAMILY:
+            if FAMILY.get(spec.get("kind")) not in REQUIRED:
                 self.error(where, f"kind {spec.get('kind')!r} 未知")
             if extra := set(spec) - {"mention", "kind"}:
                 self.error(where, f"未知字段 {sorted(extra)}")

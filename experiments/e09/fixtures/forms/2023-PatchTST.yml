@@ -33,7 +33,7 @@ objects:
         A Transformer encoder for time series that splits each univariate channel into
         subseries-level patches used as input tokens, and processes channels independently
         with shared weights.
-    rejected: []
+    rejected: [method_0009, method_0010, method_0004, method_0012, method_0007]   # dry_run 返回的语义近邻，判定均不是同一对象
   informer:
     labels: [Concept, Method]
     stub: true

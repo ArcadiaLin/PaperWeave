@@ -47,7 +47,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `env_check` | 环境自检（`make check`） |
 | `seed` | 种子入库入口：固定写入顺序、读种子文件，逐批经 Commit 写入（`make seed`） |
 | `form` | 论文表单编译（不连库）：表单 → delta，报告错误与待确认项（`make compile`）；契约见 `docs/designs/v2/commit_contract.md` |
-| `operators/commit` | Commit：增量检查 → plan（dry_run）→ apply → 复核；目前只接受种子增量 |
+| `operators/commit/` | Commit：增量检查 → plan（dry_run）→ apply → 复核。`seed` 处理种子增量；`paper` 处理论文表单编译出的增量（Experiment、ResultUnit、Material、IngestBatch），`apply_paper(commit=False)` 为演练：写入并复核后回滚 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
 | `utils/schema` | graph_model_v2 的机器可读部分：kind、命名空间唯一性、关系端点、id 前缀、约束、全文索引 |
@@ -62,6 +62,6 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 
 ## 现在还不是什么
 
-还没有论文入库。表单编译已实现（`form`），Commit 的论文增量（dry_run 中的引用解析与查重、
-Content 写入、批次记录）尚未实现；读取侧只有 Resolve 与 Get，其余算子尚未实现。notebook 只读写
+还没有论文入库。表单编译（`form`）与 Commit 的论文增量（`operators/commit/paper`）已实现，只用夹具做过演练
+（写入后回滚）；正式表单与入库目标（`make ingest`）待三张表全量抽取时再加。读取侧只有 Resolve 与 Get，其余算子尚未实现。notebook 只读写
 `data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。

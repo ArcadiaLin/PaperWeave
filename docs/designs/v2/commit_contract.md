@@ -1,6 +1,6 @@
 # Commit 契约：论文增量的入库
 
-> **状态：** 已定（2026-10-03），尚未实现。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
+> **状态：** 已定（2026-10-03）。E09 已实现 compile（`form.py`）、dry_run 与 apply（`operators/commit/paper.py`），只用部分行夹具做过演练（写入后回滚）；论文增量中的 Entity / Concept 关系写入尚未实现。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
 
 ## 1. 流程与职责
 

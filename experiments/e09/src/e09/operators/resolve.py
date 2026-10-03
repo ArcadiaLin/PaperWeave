@@ -72,8 +72,8 @@ def _semantic(query_text, family, kind):
              v=v, k=POOL * OVERFETCH, kind=kind, pool=POOL)
 
 
-def recall_channels(mention, text, family, kind, scope) -> tuple[dict, dict]:
-    """返回 (各通道的有序结果, 各通道状态)。缺少输入的通道关闭；执行失败记为 error，不吞掉。"""
+def recall_channels(mention, text, family, kind, scope, channels=None) -> tuple[dict, dict]:
+    """返回 (各通道的有序结果, 各通道状态)。缺少输入或未被 channels 选中的通道关闭；执行失败记为 error，不吞掉。"""
     plan = {
         "lexical_name": (lambda: _lexical_name(mention, kind, scope)) if mention else None,
         "lexical_text": (lambda: _lexical_text(text, family, kind)) if text else None,
@@ -82,6 +82,8 @@ def recall_channels(mention, text, family, kind, scope) -> tuple[dict, dict]:
     }
     results, status = {}, {}
     for ch, run in plan.items():
+        if channels is not None and ch not in channels:
+            run = None
         if run is None:
             status[ch] = "disabled"
             continue
@@ -112,13 +114,18 @@ def _alias_stage(mention, kind, scope):
     return {"stage": "alias", "key": key, "key_status": status, "hits": hits, "normalizer_ref": NORMALIZER}
 
 
-def resolve(query: dict | str, *, kind: str, scope: str = "global", mode: str = "read", n: int = TOP_N) -> dict:
+def resolve(query: dict | str, *, kind: str, scope: str = "global", mode: str = "read", n: int = TOP_N,
+            channels: set[str] | None = None) -> dict:
+    """channels 限定语义阶段使用的通道（lexical_name / lexical_text / semantic），默认全开；
+    关闭的通道在 coverage.channels 中记为 disabled。Commit 对桩节点查重只开名称词面（commit_contract.md §4）。"""
     query = {"mention": query} if isinstance(query, str) else dict(query)
     if unknown := set(query) - {"identifier", "mention", "text"}:
         raise ValueError(f"query 只接受 identifier、mention、text，不接受 {sorted(unknown)}")
     mention, identifier, text = query.get("mention"), query.get("identifier"), query.get("text")
     if kind not in FAMILY:
         raise ValueError(f"未知 kind {kind!r}")
+    if FAMILY[kind] not in INSTRUCT:
+        raise ValueError(f"Resolve 只解析 Entity 与 Concept，{kind!r} 属于 {FAMILY[kind]}")
     if mode not in ("read", "write"):
         raise ValueError(f"mode 只能是 read / write，不是 {mode!r}")
     if not (mention or identifier or text):
@@ -171,7 +178,7 @@ def resolve(query: dict | str, *, kind: str, scope: str = "global", mode: str = 
                 "channels": {}, "truncated": False}
     errors = []
     if not (mode == "read" and result and result[1] == "resolved"):
-        channels, coverage["channels"] = recall_channels(mention, text, family, kind, scope)
+        channels, coverage["channels"] = recall_channels(mention, text, family, kind, scope, channels)
         errors = [f"{ch}: {s}" for ch, s in coverage["channels"].items() if s.startswith("error")]
         fused = fuse(channels)
         exact = set(result[2]) if result else set()

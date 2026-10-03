@@ -39,7 +39,7 @@ objects:
         A linear forecasting model that decomposes the input series into a trend component
         (moving average) and a remainder (seasonal) component, applies a one-layer linear
         mapping to each along the time axis, and sums the two outputs as the forecast.
-    rejected: []
+    rejected: [method_0008, method_0007, method_0002, method_0004, method_0010]   # dry_run 返回的语义近邻，判定均不是同一对象
   # 基线：桩节点。只有名称与引用线索；定义与方法间关系留空，等其原论文入库时补全
   fedformer:
     labels: [Concept, Method]
