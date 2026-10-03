@@ -1,0 +1,101 @@
+# I3 首个实例的问题集（i3-v1）：DLinear 与 PatchTST。
+#
+# 这是三组（S、S-Cypher、R0）共同看到的内容：答题说明、答案格式与问题，不含任何参考答案或提示。
+# 参考答案在 reference.yml。设计与取舍见 docs/discussions/2026-10-03-i3-first-instance-question-set.md。
+# 问题用英文：论文与库的内容都是英文（讨论稿 §5 第 1 项，2026-10-03 确认）。
+
+version: i3-v1
+papers:   # 答案中用这两个键指称论文
+  dlinear: "Are Transformers Effective for Time Series Forecasting? (Zeng et al.)"
+  patchtst: "A Time Series is Worth 64 Words: Long-term Forecasting with Transformers (Nie et al.)"
+
+instructions: |
+  You are auditing reported experimental results in two papers on long-term time series forecasting,
+  referred to as `dlinear` and `patchtst`. Answer each question from what the papers report. Do not use
+  outside knowledge about these papers or methods.
+
+  For every comparison or apparent discrepancy:
+  - Report each value you rely on with its paper, table number, method, the variant label exactly as
+    printed, dataset, horizon T, metric and value.
+  - For each pair of reported series you compare, judge seven conditions as same / different / unknown:
+    dataset, metric, split, horizon T, look-back window L, channels (multivariate / univariate) and
+    training (supervised / self-supervised). Do not treat a condition as the same when the papers do
+    not establish it.
+  - Classify how the two series are expected to relate, based on what the papers state about where
+    the numbers come from:
+      same_source: one series is cited from the other, or both are the same run reported twice;
+      independent_same_conditions: both were obtained by running the method, under the same conditions;
+      not_comparable: the conditions are known to differ;
+      unknown: the source or conditions are not stated.
+  - Then state whether the values are consistent (equal) or inconsistent, and interpret the pair.
+    Do not decide which of two inconsistent values is correct; list candidate explanations instead.
+  - Count independent pieces of evidence: the same run reported or cited several times counts once.
+  - Mark every judgment that is your inference rather than a statement in the papers.
+
+answer_format: |
+  End your answer with one fenced ```json block of this shape (lists may be empty):
+  {
+    "series": [
+      {"id": "s1", "paper": "dlinear|patchtst", "table": "Table 3", "method": "...",
+       "variant": "label as printed or null", "dataset": "...", "metric": "MSE|MAE",
+       "values": {"96": 0.375, "192": 0.405}}
+    ],
+    "comparisons": [
+      {"a": "s1", "b": "s2", "lower": {"96": "a|b|tie"}, "conditions": {"dataset": "same|different|unknown",
+       "metric": "...", "split": "...", "T": "...", "L": "...", "channels": "...", "training": "..."}}
+    ],
+    "relations": [
+      {"a": "s1", "b": "s2",
+       "expectation": "same_source|independent_same_conditions|not_comparable|unknown",
+       "observation": "consistent|inconsistent|partially_consistent", "mismatched": ["96"],
+       "interpretation": "short text", "conditions": {"...": "same|different|unknown"}}
+    ],
+    "evidence": [{"about": "method or claim", "independent_count": 1, "why": "short text"}],
+    "inferences": ["judgments that are not stated in the papers"],
+    "answer": "the direct answer to the question in one or two sentences"
+  }
+
+questions:
+  - id: Q1
+    text: >
+      On the Traffic dataset, how does PatchTST compare with DLinear in multivariate long-term forecasting
+      under comparable conditions? Give MSE and MAE for every horizon, and say how many independent pieces
+      of evidence the comparison rests on.
+  - id: Q2
+    text: >
+      On ETTh1, how does PatchTST compare with DLinear in multivariate long-term forecasting under
+      comparable conditions? Which DLinear variant is being compared?
+  - id: Q3
+    text: >
+      PatchTST reports results for DLinear on the ILI dataset. Are they consistent with what the DLinear
+      paper itself reports?
+  - id: Q4
+    text: >
+      Compare the MSE of Pyraformer on the Weather dataset as reported in the two papers.
+  - id: Q5
+    text: >
+      What MSE does the DLinear paper report for DLinear on ILI at horizon T=36?
+  - id: Q6
+    text: >
+      The two papers report different results for FEDformer on the Electricity dataset. Which one is right,
+      and why do they differ?
+  - id: Q7
+    text: >
+      The PatchTST paper reports FEDformer on ETTh1 in more than one table, with different numbers. Why?
+  - id: Q8
+    text: >
+      In univariate forecasting on ETTh1, how does PatchTST compare with DLinear?
+  - id: Q9
+    text: >
+      Are the baseline results in Table 4 of the PatchTST paper (self-supervised PatchTST) new experiments?
+  - id: Q10
+    text: >
+      DLinear's MSE on ETTh1 at horizon 96 appears as 0.375 in one place and 0.056 in another in the PatchTST
+      paper. Is this a contradiction?
+  - id: Q11
+    text: >
+      Across the two papers, is there any independent replication of a method's results under the same
+      conditions?
+  - id: Q12
+    text: >
+      In the DLinear paper, what MSE does Autoformer reach on Electricity without positional embedding?

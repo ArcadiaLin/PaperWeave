@@ -1,0 +1,777 @@
+# I3 首个实例的参考答案（i3-v1），与 questions.yml 一一对应。由 Claude 读表写出，2026-10-03 经用户确认。
+#
+# - series 的数值按原文印的字符串保存（保留末位 0 与 "0474" 这类误印），评分时转为数值比较；
+#   tests/test_i3_reference.py 逐值核对它们确实出现在对应表的锚点行范围内。
+# - comparisons：同条件的性能比较，lower 为每个 T 上较低的一方（a / b / tie）。
+# - relations：两组报告值的关系：expectation 由来源与条件定，observation 由数值定；
+#   b 为列表时表示出处论文中的全部候选序列，observation=no_match_in_source 即无一相符。
+#   interpretation 取 double_counted / transcription_deviation / no_contradiction / possibly_reused / suspected_copy_error。
+#   口径见 docs/designs/v2/intents_decompose.md I3"报告值之间的关系口径"。
+# - evidence：独立证据数；key_points 与 must_not 供人工评分（解释是否越界）。
+# - 这些是"可比性与证据计数"的参考，不裁决哪个数字正确。
+
+version: i3-v1
+questions:
+- id: Q1
+  series:
+  - id: pt42_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.367', '192': '0.385', '336': '0.398', '720': '0.434'}
+  - id: pt42_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: Traffic
+    metric: MAE
+    values: {'96': '0.251', '192': '0.259', '336': '0.265', '720': '0.287'}
+  - id: ptdl_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.410', '192': '0.423', '336': '0.436', '720': '0.466'}
+  - id: ptdl_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: Traffic
+    metric: MAE
+    values: {'96': '0.282', '192': '0.287', '336': '0.296', '720': '0.315'}
+  - id: dl4s_mse
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-S
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.410', '192': '0.423', '336': '0.436', '720': '0.466'}
+  - id: dl4s_mae
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-S
+    dataset: Traffic
+    metric: MAE
+    values: {'96': '0.282', '192': '0.287', '336': '0.296', '720': '0.315'}
+  comparisons:
+  - a: pt42_mse
+    b: ptdl_mse
+    lower: {'96': a, '192': a, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  - a: pt42_mae
+    b: ptdl_mae
+    lower: {'96': a, '192': a, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  relations:
+  - a: ptdl_mse
+    b: dl4s_mse
+    expectation: same_source
+    observation: consistent
+    mismatched: []
+    interpretation: double_counted
+    basis: ['patchtst::128 cites DLinear results from the DLinear paper']
+  - a: ptdl_mae
+    b: dl4s_mae
+    expectation: same_source
+    observation: consistent
+    mismatched: []
+    interpretation: double_counted
+    basis: ['patchtst::128']
+  evidence: {DLinear: 1, PatchTST: 1}
+  inferences: ['The DLinear column in patchtst Table 3 is DLinear-S (L=336): not stated, matched by values.']
+  key_points: ['The fair pair is PatchTST/42 (L=336) vs DLinear (L=336), patchtst::130; PatchTST/64 uses L=512.',
+    PatchTST/42 is lower on all four horizons for both metrics., 'DLinear values are cited from the DLinear paper
+      and equal DLinear-S in dlinear Table 4: one piece of evidence.', 'PatchTST/42''s Traffic numbers recur in
+      patchtst Tables 1, 4, 5, 7, 9, 10, 11, 12, 13, 15: one run reused, not more evidence; Table 14 gives the 5-seed
+      mean (0.3669 at T=96).']
+  must_not: [Count DLinear's results in patchtst and dlinear as two pieces of evidence., Compare PatchTST/64 with
+      DLinear as the like-for-like pair without noting L differs.]
+- id: Q2
+  series:
+  - id: pt42_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.375', '192': '0.414', '336': '0.431', '720': '0.449'}
+  - id: pt42_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.399', '192': '0.421', '336': '0.436', '720': '0.466'}
+  - id: ptdl_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.375', '192': '0.405', '336': '0.439', '720': '0.472'}
+  - id: ptdl_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.399', '192': '0.416', '336': '0.443', '720': '0.490'}
+  - id: dl4s_mse
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-S
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.375', '192': '0.405', '336': '0.439', '720': '0.472'}
+  - id: dl4i_mse
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-I
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.377', '192': '0.413', '336': '0.440', '720': '0.476'}
+  comparisons:
+  - a: pt42_mse
+    b: ptdl_mse
+    lower: {'96': tie, '192': b, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  - a: pt42_mae
+    b: ptdl_mae
+    lower: {'96': tie, '192': b, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  relations:
+  - a: ptdl_mse
+    b: dl4s_mse
+    expectation: same_source
+    observation: consistent
+    mismatched: []
+    interpretation: double_counted
+    basis: ['patchtst::128']
+  evidence: {DLinear: 1, PatchTST: 1}
+  inferences: ['The DLinear column is DLinear-S: patchtst does not print the variant; its values equal DLinear-S
+      and differ from DLinear-I in dlinear Table 4.']
+  key_points: ['Mixed result: tie at T=96, DLinear lower at T=192, PatchTST/42 lower at T=336 and 720 (both metrics).',
+    The variant is identified by matching values and must be marked as an inference.]
+  must_not: [Claim PatchTST is better than DLinear on ETTh1 at every horizon.]
+- id: Q3
+  series:
+  - id: ptdl_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: ILI
+    metric: MSE
+    values: {'24': '2.215', '36': '1.963', '48': '2.130', '60': '2.368'}
+  - id: ptdl_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: ILI
+    metric: MAE
+    values: {'24': '1.081', '36': '0.963', '48': '1.024', '60': '1.096'}
+  - id: dl2s_mse
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: DLinear
+    variant: DLinear-S
+    dataset: ILI
+    metric: MSE
+    values: {'24': '2.398', '36': '2.646', '48': '2.614', '60': '2.804'}
+  - id: dl2i_mse
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: DLinear
+    variant: DLinear-I
+    dataset: ILI
+    metric: MSE
+    values: {'24': '3.015', '36': '2.737', '48': '2.577', '60': '2.821'}
+  - id: dl4s_mse
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-S
+    dataset: ILI
+    metric: MSE
+    values: {'96': '2.108', '192': '2.332', '336': '2.088', '720': '2.299'}
+  - id: dl4i_mse
+    paper: dlinear
+    table: Table 4
+    anchor: S5.T4
+    method: DLinear
+    variant: DLinear-I
+    dataset: ILI
+    metric: MSE
+    values: {'96': '2.007', '192': '2.175', '336': '2.202', '720': '2.348'}
+  - id: dl9_mse
+    paper: dlinear
+    table: Table 9
+    anchor: S5.T9
+    method: DLinear
+    variant: DLinear
+    dataset: ILI
+    metric: MSE
+    values: {'24': '2.398', '36': '2.642', '48': '2.614', '60': '2.804'}
+  comparisons: []
+  relations:
+  - a: ptdl_mse
+    b: [dl2s_mse, dl2i_mse, dl4s_mse, dl4i_mse, dl9_mse]
+    expectation: same_source
+    observation: no_match_in_source
+    mismatched: ['24', '36', '48', '60']
+    interpretation: transcription_deviation
+    basis: ['patchtst::128 cites DLinear from the DLinear paper; b lists every DLinear ILI series in the stored
+        DLinear paper, none matches']
+  evidence: {DLinear on ILI: 1}
+  inferences: []
+  key_points: [None of the ILI series in the stored DLinear paper matches patchtst's DLinear values., 'Candidate
+      explanation: patchtst::537 says DLinear uses L=104 on ILI, a configuration absent from the stored DLinear
+      paper; a different paper version is possible.', 'dlinear Table 4 prints ILI horizons as 96-720, likely a misprint.']
+  must_not: [Treat patchtst's ILI values for DLinear as an independent replication., Declare either paper wrong.]
+- id: Q4
+  series:
+  - id: ptpy_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: Pyraformer
+    variant: null
+    dataset: Weather
+    metric: MSE
+    values: {'96': '0.896', '192': '0.622', '336': '0.739', '720': '1.004'}
+  - id: ptpy_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: Pyraformer
+    variant: null
+    dataset: Weather
+    metric: MAE
+    values: {'96': '0.556', '192': '0.624', '336': '0.753', '720': '0.934'}
+  - id: dlpy_mse
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: Pyraformer
+    variant: null
+    dataset: Weather
+    metric: MSE
+    values: {'96': '0.622', '192': '0.739', '336': '1.004', '720': '1.420'}
+  - id: dlpy_mae
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: Pyraformer
+    variant: null
+    dataset: Weather
+    metric: MAE
+    values: {'96': '0.556', '192': '0.624', '336': '0.753', '720': '0.934'}
+  comparisons: []
+  relations:
+  - a: ptpy_mse
+    b: dlpy_mse
+    expectation: same_source
+    observation: inconsistent
+    mismatched: ['96', '192', '336', '720']
+    interpretation: transcription_deviation
+    basis: ['patchtst::128 cites Pyraformer from the DLinear paper', 'dlinear Table 2 footnote: Pyraformer implemented
+        by the DLinear authors']
+  - a: ptpy_mae
+    b: dlpy_mae
+    expectation: same_source
+    observation: consistent
+    mismatched: []
+    interpretation: double_counted
+    basis: ['patchtst::128']
+  evidence: {Pyraformer: 1}
+  inferences: [The MSE row appears shifted by one cell when copied (e.g. patchtst Traffic T=96 2.085 equals dlinear
+      Exchange-Rate T=720).]
+  key_points: [patchtst's MSE values lag dlinear's by one horizon; MAE values match., 'Same pattern for MSE on Electricity,
+      Traffic and ILI; the four ETT datasets (from dlinear Table 3) match in all 32 cells.', 'One piece of evidence:
+      the DLinear authors'' run.']
+  must_not: [Treat the two papers' Pyraformer results as independent., Declare which value is correct.]
+- id: Q5
+  series:
+  - id: dl2s_mse
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: DLinear
+    variant: DLinear-S
+    dataset: ILI
+    metric: MSE
+    values: {'24': '2.398', '36': '2.646', '48': '2.614', '60': '2.804'}
+  - id: dl9_mse
+    paper: dlinear
+    table: Table 9
+    anchor: S5.T9
+    method: DLinear
+    variant: DLinear
+    dataset: ILI
+    metric: MSE
+    values: {'24': '2.398', '36': '2.642', '48': '2.614', '60': '2.804'}
+  comparisons: []
+  relations:
+  - a: dl2s_mse
+    b: dl9_mse
+    expectation: same_source
+    observation: partially_consistent
+    mismatched: ['36']
+    interpretation: transcription_deviation
+    basis: [both own runs in the same paper with L=36; dlinear Table 9's other 35 DLinear cells equal DLinear-S
+        in Tables 2 and 3]
+  evidence: {DLinear on ILI: 1}
+  inferences: ['Table 9''s ''DLinear'' is the same DLinear-S run as Table 2: the labels differ; supported by 35
+      of 36 equal cells.']
+  key_points: ['Two values are printed: 2.646 (Table 2, DLinear-S) and 2.642 (Table 9, DLinear).', Do not pick one
+      as correct.]
+  must_not: [Report a single value without noting the other.]
+- id: Q6
+  series:
+  - id: dlfed_mse
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: FEDformer
+    variant: null
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.193', '192': '0.201', '336': '0.214', '720': '0.246'}
+  - id: ptfed_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: FEDformer
+    variant: null
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.186', '192': '0.197', '336': '0.213', '720': '0.233'}
+  comparisons: []
+  relations:
+  - a: dlfed_mse
+    b: ptfed_mse
+    expectation: not_comparable
+    observation: inconsistent
+    mismatched: ['96', '192', '336', '720']
+    interpretation: no_contradiction
+    conditions: {dataset: same, metric: same, split: same, T: same, L: different, channels: same, training: same}
+    basis: ['dlinear Table 2 footnote: cited from FEDformer, L=96', 'patchtst::535: re-run with six look-back windows,
+        best result per task']
+  evidence: {FEDformer on Electricity: 2}
+  inferences: []
+  key_points: ['Independent sources, different L selection: the difference is not a contradiction and neither is
+      wrong.', 'On ETT, only ETTh1 T=96 MSE (0.376) coincides; equal values under different conditions mean nothing.']
+  must_not: [Say one of the two results is wrong., Call the difference a failed replication.]
+- id: Q7
+  series:
+  - id: pt3_mse
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: FEDformer
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.376', '192': '0.423', '336': '0.444', '720': '0.469'}
+  - id: pt3_mae
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: FEDformer
+    variant: null
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.415', '192': '0.446', '336': '0.462', '720': '0.492'}
+  - id: pt15_mse
+    paper: patchtst
+    table: Table 15
+    anchor: A1.T15
+    method: FEDformer
+    variant: FEDformer
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.376', '192': '0.420', '336': '0.459', '720': '0.506'}
+  - id: pt15_mae
+    paper: patchtst
+    table: Table 15
+    anchor: A1.T15
+    method: FEDformer
+    variant: FEDformer
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.419', '192': '0.448', '336': '0.465', '720': '0.507'}
+  - id: dl3_mse
+    paper: dlinear
+    table: Table 3
+    anchor: S5.T3
+    method: FEDformer
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.376', '192': '0.420', '336': '0.459', '720': '0.506'}
+  - id: dl3_mae
+    paper: dlinear
+    table: Table 3
+    anchor: S5.T3
+    method: FEDformer
+    variant: null
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.419', '192': '0.448', '336': '0.465', '720': '0.507'}
+  comparisons: []
+  relations:
+  - a: pt3_mse
+    b: pt15_mse
+    expectation: not_comparable
+    observation: partially_consistent
+    mismatched: ['192', '336', '720']
+    interpretation: no_contradiction
+    conditions: {dataset: same, metric: same, split: same, T: same, L: different, channels: same, training: same}
+    basis: ['patchtst::535 (Table 3 re-run)', 'patchtst::900 (Table 15 non-CI baselines cited from the DLinear paper)']
+  - a: pt15_mse
+    b: dl3_mse
+    expectation: same_source
+    observation: consistent
+    mismatched: []
+    interpretation: double_counted
+    basis: ['patchtst::900', 'dlinear Table 3 footnote: cited from FEDformer']
+  evidence: {FEDformer on ETTh1: 2}
+  inferences: []
+  key_points: ['Table 3 is a re-run with L selection; Table 15 is cited from the DLinear paper, which cites the
+      FEDformer paper: two hops.', 'Table 15 vs dlinear Table 3: same source, consistent; dlinear''s misprint ''0474''
+      (ETTh2 T=720 MAE) appears as 0.474 in patchtst.', 'Two independent pieces: the PatchTST re-run and the FEDformer
+      paper''s run (not in the store).']
+  must_not: [Call the two patchtst tables contradictory.]
+- id: Q8
+  series:
+  - id: pt42_mse
+    paper: patchtst
+    table: Table 8
+    anchor: A1.T8
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.055', '192': '0.071', '336': '0.081', '720': '0.087'}
+  - id: pt42_mae
+    paper: patchtst
+    table: Table 8
+    anchor: A1.T8
+    method: PatchTST
+    variant: PatchTST/42
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.179', '192': '0.205', '336': '0.225', '720': '0.232'}
+  - id: ptdl_mse
+    paper: patchtst
+    table: Table 8
+    anchor: A1.T8
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.056', '192': '0.071', '336': '0.098', '720': '0.189'}
+  - id: ptdl_mae
+    paper: patchtst
+    table: Table 8
+    anchor: A1.T8
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.180', '192': '0.204', '336': '0.244', '720': '0.359'}
+  - id: dl5_mse
+    paper: dlinear
+    table: Table 5
+    anchor: S5.T5
+    method: DLinear
+    variant: DLinear
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.056', '192': '0.071', '336': '0.098', '720': '0.119'}
+  - id: dl5_mae
+    paper: dlinear
+    table: Table 5
+    anchor: S5.T5
+    method: DLinear
+    variant: DLinear
+    dataset: ETTh1
+    metric: MAE
+    values: {'96': '0.180', '192': '0.204', '336': '0.244', '720': '0.274'}
+  comparisons:
+  - a: pt42_mse
+    b: ptdl_mse
+    lower: {'96': a, '192': tie, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  - a: pt42_mae
+    b: ptdl_mae
+    lower: {'96': a, '192': b, '336': a, '720': a}
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: same, training: same}
+  relations:
+  - a: ptdl_mse
+    b: dl5_mse
+    expectation: same_source
+    observation: partially_consistent
+    mismatched: ['720']
+    interpretation: transcription_deviation
+    basis: ['patchtst::567 cites baselines from the DLinear paper']
+  - a: ptdl_mae
+    b: dl5_mae
+    expectation: same_source
+    observation: partially_consistent
+    mismatched: ['720']
+    interpretation: transcription_deviation
+    basis: ['patchtst::567']
+  evidence: {DLinear: 1, PatchTST: 1}
+  inferences: []
+  key_points: ['DLinear at T=720: 0.189/0.359 in patchtst Table 8 vs 0.119/0.274 in dlinear Table 5; all other DLinear
+      cells match.', Among the other cited baselines only LogTrans T=720 MAE differs (0.629 vs 0.628)., PatchTST/42
+      is lower at T=336 and 720 whichever DLinear value is used; the size of the T=720 gap depends on it., Univariate
+      results must not be mixed with the multivariate Table 3.]
+  must_not: [Use multivariate values for this comparison.]
+- id: Q9
+  series:
+  - id: pt4_DLinear
+    paper: patchtst
+    table: Table 4
+    anchor: S4.T4
+    method: DLinear
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.410', '192': '0.423', '336': '0.436', '720': '0.466'}
+  - id: pt3_DLinear
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.410', '192': '0.423', '336': '0.436', '720': '0.466'}
+  - id: pt4_FEDformer
+    paper: patchtst
+    table: Table 4
+    anchor: S4.T4
+    method: FEDformer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.576', '192': '0.610', '336': '0.608', '720': '0.621'}
+  - id: pt3_FEDformer
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: FEDformer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.576', '192': '0.610', '336': '0.608', '720': '0.621'}
+  - id: pt4_Autoformer
+    paper: patchtst
+    table: Table 4
+    anchor: S4.T4
+    method: Autoformer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.597', '192': '0.607', '336': '0.623', '720': '0.639'}
+  - id: pt3_Autoformer
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: Autoformer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.597', '192': '0.607', '336': '0.623', '720': '0.639'}
+  - id: pt4_Informer
+    paper: patchtst
+    table: Table 4
+    anchor: S4.T4
+    method: Informer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.733', '192': '0.777', '336': '0.776', '720': '0.827'}
+  - id: pt3_Informer
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: Informer
+    variant: null
+    dataset: Traffic
+    metric: MSE
+    values: {'96': '0.733', '192': '0.777', '336': '0.776', '720': '0.827'}
+  comparisons: []
+  relations:
+  - a: pt4_DLinear
+    b: pt3_DLinear
+    expectation: unknown
+    observation: consistent
+    mismatched: []
+    interpretation: possibly_reused
+    basis: [patchtst Table 4 does not state where baseline results come from]
+  - a: pt4_FEDformer
+    b: pt3_FEDformer
+    expectation: unknown
+    observation: consistent
+    mismatched: []
+    interpretation: possibly_reused
+    basis: [patchtst Table 4 does not state where baseline results come from]
+  - a: pt4_Autoformer
+    b: pt3_Autoformer
+    expectation: unknown
+    observation: consistent
+    mismatched: []
+    interpretation: possibly_reused
+    basis: [patchtst Table 4 does not state where baseline results come from]
+  - a: pt4_Informer
+    b: pt3_Informer
+    expectation: unknown
+    observation: consistent
+    mismatched: []
+    interpretation: possibly_reused
+    basis: [patchtst Table 4 does not state where baseline results come from]
+  evidence: {baselines in Table 4: 0}
+  inferences: ['Table 4''s baselines are reused from Table 3: all 96 baseline cells are equal, but the paper does
+      not say so.']
+  key_points: ['Source unstated; all baseline cells equal Table 3 (same for Tables 5, 12, 13).', 'Most likely reused:
+      DLinear is still cited from the DLinear paper; FEDformer, Autoformer and Informer are the Table 3 re-runs.',
+    No new evidence.]
+  must_not: ['State as fact that the baselines were re-run, or that they were copied.']
+- id: Q10
+  series:
+  - id: pt3
+    paper: patchtst
+    table: Table 3
+    anchor: S4.T3
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.375'}
+  - id: pt8
+    paper: patchtst
+    table: Table 8
+    anchor: A1.T8
+    method: DLinear
+    variant: null
+    dataset: ETTh1
+    metric: MSE
+    values: {'96': '0.056'}
+  comparisons: []
+  relations:
+  - a: pt3
+    b: pt8
+    expectation: not_comparable
+    observation: inconsistent
+    mismatched: ['96']
+    interpretation: no_contradiction
+    conditions: {dataset: same, metric: same, split: same, T: same, L: same, channels: different, training: same}
+    basis: ['patchtst Table 3 caption: multivariate', 'patchtst Table 8 caption and patchtst::567: univariate']
+  evidence: {}
+  inferences: []
+  key_points: ['0.375 is multivariate (Table 3); 0.056 is univariate (Table 8): different settings, no contradiction.']
+  must_not: [Call it a contradiction or an error.]
+- id: Q11
+  series: []
+  comparisons: []
+  relations: []
+  evidence: {independent same-condition replications: 0}
+  inferences: []
+  per_method:
+  - {method: DLinear, dlinear: own, patchtst: cited from dlinear, expectation: same_source}
+  - {method: Pyraformer, dlinear: own run (L=96), patchtst: cited from dlinear, expectation: same_source}
+  - {method: LogTrans, dlinear: cited from FEDformer paper, patchtst: cited from dlinear, expectation: same_source}
+  - {method: 'FEDformer, Autoformer, Informer', dlinear: cited from FEDformer paper (L=96), patchtst: Table 3 re-run
+      with L selection; Table 15 cited from dlinear, expectation: not_comparable (re-run) / same_source (Table 15)}
+  key_points: [No pair qualifies as independent_same_conditions in the two papers., Agreement between the papers
+      is the same evidence repeated; disagreement is either a condition difference or a transcription deviation.]
+  must_not: [Claim the two papers corroborate each other's results.]
+- id: Q12
+  series:
+  - id: auto_wopos
+    paper: dlinear
+    table: Table 6
+    anchor: S5.T6
+    method: Autoformer
+    variant: wo/Pos.
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.193', '192': '0.201', '336': '0.214', '720': '0.246'}
+  - id: fed_wopos
+    paper: dlinear
+    table: Table 6
+    anchor: S5.T6
+    method: FEDformer
+    variant: wo/Pos.
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.193', '192': '0.201', '336': '0.214', '720': '0.246'}
+  - id: auto_t2
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: Autoformer
+    variant: null
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.201', '192': '0.222', '336': '0.231', '720': '0.254'}
+  - id: fed_t2
+    paper: dlinear
+    table: Table 2
+    anchor: S5.T2
+    method: FEDformer
+    variant: null
+    dataset: Electricity
+    metric: MSE
+    values: {'96': '0.193', '192': '0.201', '336': '0.214', '720': '0.246'}
+  comparisons: []
+  relations:
+  - a: auto_wopos
+    b: fed_wopos
+    expectation: unknown
+    observation: consistent
+    mismatched: []
+    interpretation: suspected_copy_error
+    basis: [dlinear Table 6 does not state the source]
+  evidence: {}
+  inferences: ['The Autoformer wo/Pos. Electricity row looks copied from FEDformer''s: identical values.']
+  key_points: ['Printed: 0.193, 0.201, 0.214, 0.246 — identical to FEDformer wo/Pos. on Electricity and to FEDformer
+      in Table 2.', 'Autoformer wo/Pos. on Traffic equals Autoformer in Table 2 (0.613, 0.616, 0.622, 0.660); Autoformer
+      on Electricity in Table 2 is 0.201, 0.222, 0.231, 0.254.', The true value cannot be determined from the paper.]
+  must_not: [Report 0.193-0.246 as Autoformer's result without flagging the anomaly.]
