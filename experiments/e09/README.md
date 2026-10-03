@@ -22,6 +22,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     make embed        # 建向量索引并补算向量；需要 embedding 服务（见 utils/embedding.py）
     make compile      # 编译论文表单（不连库）；默认编译 fixtures/forms/ 下的夹具
     make ingest       # 论文入库：按顺序编译、dry_run、apply forms/ 下的正式表单；重跑无副作用
+    make test         # 读取算子在现有库上的检验（需先 make ingest）；期望值由正式表单独立推出
     make lab          # JupyterLab，工作目录为 notebooks/
 
 ## 数据
@@ -42,6 +43,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     src/e09/operators/    中间件算子，一个算子一个文件，文件名即设计中的算子名
     src/e09/utils/        算子共用的底层部件，本身不是算子
     fixtures/forms/       表单夹具：各录一张表，用来检验编译与 Commit，不是正式入库表单
+    tests/                读取算子的检验：连 neo4j-e09 现有库，库没起时跳过
 
 | 位置 | 内容 |
 | --- | --- |
@@ -53,6 +55,8 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `operators/commit/` | Commit：增量检查 → plan（dry_run）→ apply → 复核。`seed` 处理种子增量；`paper` 处理论文表单编译出的报告级增量（Experiment 与参与边、Material、IngestBatch；数值留在原文），`apply_paper(commit=False)` 为演练：写入并复核后回滚 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
+| `operators/experiments` | Experiments：按被测对象（任一命中）、数据集（严格，或沿 PART_OF / VERSION_OF 展开）、指标与论文范围取实验报告；纯结构匹配，不走语义通道；返回参与方的角色、变体与来源性质、条件、材料定位，以及 expandable / role_missing 诊断 |
+| `operators/read_evidence` | ReadEvidence：按 `<material_id>::<章节>::<start>:<end>` 读材料行，核对内容哈希，逐项给出 available / missing / error |
 | `utils/schema` | graph_model_v2 的机器可读部分：kind、命名空间唯一性、关系端点、id 前缀、约束、全文索引 |
 | `utils/graph` | 连接、只读查询 `q`、建约束与全文索引 |
 | `utils/namekey` | 规范化配置 `name-key-v1` 与精确键 |
@@ -66,5 +70,5 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 ## 现在还不是什么
 
 已入库两篇论文（报告级，2026-10-03）：2023-DLinear 的表 2–9 与 2023-PatchTST 的表 1、3–15，共 22 个实验，表单由 Claude
-手写，作为人工样例与参考结果。读取侧只有 Resolve 与 Get，其余算子（包括 I3 要用的 Experiments）尚未实现；论文增量中的
-Entity / Concept 关系写入尚未实现。notebook 只读写 `data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。
+手写，作为人工样例与参考结果。读取侧已有 Resolve、Get、Experiments 与 ReadEvidence；Search、Context 等尚未实现，
+"找设计相似的实验"属于 Search，不在 Experiments 中。论文增量中的关系只实现了 `CITES`。notebook 只读写 `data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。
