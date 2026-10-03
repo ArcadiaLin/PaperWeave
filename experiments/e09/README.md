@@ -21,6 +21,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     make seed         # 种子入库；重跑无副作用，有冲突或复核失败时返回非零
     make embed        # 建向量索引并补算向量；需要 embedding 服务（见 utils/embedding.py）
     make compile      # 编译论文表单（不连库）；默认编译 fixtures/forms/ 下的夹具
+    make ingest       # 论文入库：按顺序编译、dry_run、apply forms/ 下的正式表单；重跑无副作用
     make lab          # JupyterLab，工作目录为 notebooks/
 
 ## 数据
@@ -29,8 +30,9 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
       papers.yml, status.yml, runs/   # 复制自 e08（2026-10-02），材料准备的原始记录
       papers/<citekey>/paper.md …     # 论文材料，复制自 e08，只读
       seeds/                          # v2 种子（版本管理），格式见 seeds/README.md
+      forms/                          # 论文入库表单 paper-form-v2（版本管理）
 
-`papers/`、`runs/` 等材料不进版本管理，只有 `seeds/` 被跟踪。
+`papers/`、`runs/` 等材料不进版本管理，只有 `seeds/` 与 `forms/` 被跟踪。
 
 ## 布局
 
@@ -46,6 +48,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `config` | 路径与连接参数 |
 | `env_check` | 环境自检（`make check`） |
 | `seed` | 种子入库入口：固定写入顺序、读种子文件，逐批经 Commit 写入（`make seed`） |
+| `ingest` | 论文入库入口：按 `INGEST_ORDER` 读 `forms/`，逐批编译、dry_run、apply（`make ingest`） |
 | `form` | 论文表单编译（不连库）：表单 → delta，报告错误与待确认项（`make compile`）；契约见 `docs/designs/v2/commit_contract.md` |
 | `operators/commit/` | Commit：增量检查 → plan（dry_run）→ apply → 复核。`seed` 处理种子增量；`paper` 处理论文表单编译出的报告级增量（Experiment 与参与边、Material、IngestBatch；数值留在原文），`apply_paper(commit=False)` 为演练：写入并复核后回滚 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
@@ -62,6 +65,6 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 
 ## 现在还不是什么
 
-还没有论文入库。表单编译（`form`）与 Commit 的论文增量（`operators/commit/paper`）已实现，只用夹具做过演练
-（写入后回滚）；正式表单与入库目标（`make ingest`）待三张表全量抽取时再加。读取侧只有 Resolve 与 Get，其余算子尚未实现。notebook 只读写
-`data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。
+已入库两篇论文（报告级，2026-10-03）：2023-DLinear 的表 2–9 与 2023-PatchTST 的表 1、3–15，共 22 个实验，表单由 Claude
+手写，作为人工样例与参考结果。读取侧只有 Resolve 与 Get，其余算子（包括 I3 要用的 Experiments）尚未实现；论文增量中的
+Entity / Concept 关系写入尚未实现。notebook 只读写 `data/raw/e09-paper-knowledge/` 与 neo4j-e09，不能成为文档引用数字的唯一来源（AGENTS.md）。

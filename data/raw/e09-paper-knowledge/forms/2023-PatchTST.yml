@@ -1,0 +1,460 @@
+# 正式入库表单 paper-form-v2（报告级）：2023-PatchTST 全部报告结果的表（表 1、3–15；表 2 是数据集统计，不录）。
+# 抽取者：Claude（人工样例与参考结果，2026-10-03）。写法见 docs/designs/v2/extraction_principles.md 与 commit_contract.md。
+# 报告级只记录实验在哪张表、比了谁、在哪些数据集与指标上、实验级条件；数值留在原文，比较时按锚点读取。
+# 行号指 papers/2023-PatchTST/paper.md。基线方法由 2023-DLinear 一批建立，这里只引用。
+
+form: paper-form-v2
+domain: ltsf
+material: {path: papers/2023-PatchTST/paper.md, sha256: d29e296b18e44b771c88f5ca33dcb72f59a68efd52d173125efea3ea2bd21646}
+x-ingest: {committed_by: claude, rounds: 2}   # 第 1 轮 dry_run 返回 5 个对象的语义近邻待判定；全部否定后第 2 轮无阻塞
+
+paper:
+  labels: [Entity, Paper]
+  properties:
+    name: "A Time Series is Worth 64 Words: Long-term Forecasting with Transformers"
+    identifiers: ["arxiv:2211.14730"]
+    description: >
+      Proposes PatchTST, a Transformer for multivariate time series forecasting and
+      self-supervised representation learning based on patching and channel independence.
+
+refs:
+  ltsf:       {mention: LTSF, kind: Task}
+  ts_repr:    {mention: Time series representation learning, kind: Task}
+  weather:    {mention: Weather, kind: Dataset}
+  traffic:    {mention: Traffic, kind: Dataset}
+  elec:       {mention: Electricity, kind: Dataset}
+  ili:        {mention: ILI, kind: Dataset}
+  etth1:      {mention: ETTh1, kind: Dataset}
+  etth2:      {mention: ETTh2, kind: Dataset}
+  ettm1:      {mention: ETTm1, kind: Dataset}
+  ettm2:      {mention: ETTm2, kind: Dataset}
+  mse:        {mention: MSE, kind: Metric}
+  mae:        {mention: MAE, kind: Metric}
+  dlinear:    {mention: DLinear, kind: Method}       # 原文只写 DLinear，不注明变体
+  fedformer:  {mention: FEDformer, kind: Method}
+  autoformer: {mention: Autoformer, kind: Method}
+  informer:   {mention: Informer, kind: Method}
+  pyraformer: {mention: Pyraformer, kind: Method}
+  logtrans:   {mention: LogTrans, kind: Method}
+
+objects:
+  patchtst:
+    labels: [Concept, Method]
+    properties:
+      name: PatchTST
+      definition: >
+        A Transformer encoder for time series that splits each univariate channel into
+        subseries-level patches used as input tokens, and processes channels independently
+        with shared weights.
+    rejected: [method_0009, method_0010, method_0004, method_0012, method_0007]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  # 表 6 的自监督表示学习基线：桩节点
+  btsf:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: BTSF, note: "Cited as Yang & Hong (2022), Unsupervised time-series representation learning with iterative bilinear temporal-spectral fusion."}
+    rejected: [method_0004]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  ts2vec:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: TS2Vec, note: "Cited as Yue et al. (2022), Ts2vec: Towards universal representation of time series."}
+    rejected: []
+  tnc:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: TNC, note: "Cited as Tonekaboni et al. (2021), Unsupervised representation learning for time series with temporal neighborhood coding."}
+    rejected: [method_0004, method_0028]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  ts_tcc:
+    labels: [Concept, Method]
+    stub: true
+    properties: {name: TS-TCC, note: "Cited as Eldele et al. (2021), Time-series representation learning via temporal and contextual contrasting."}
+    rejected: [method_0004, method_0024, method_0002, method_0003, method_0016]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  # 表 1 的训练时间：通用概念
+  training_time:
+    labels: [Concept, Metric]
+    properties:
+      name: Training time
+      direction: lower
+      definition: >
+        Wall-clock time needed to train a model; depends on hardware, data size, number of
+        epochs and implementation.
+    rejected: [metric_0013, metric_0014, metric_0011, metric_0012, metric_0001]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+
+relationships: []   # 方法间关系不在单篇抽取中包办
+
+x-split-128: &split128 {split: "4.1 Long-term Time series forecasting::128:128"}   # "following the same experimental setup ... as in the original papers"
+x-inferred: &inferred "Split convention inferred from the experimental setup stated in Section 4.1 (line 128)."
+
+experiments:
+  - ref: x_t1
+    anchor: S1.T1
+    section: "1 Introduction"
+    lines: [26, 48]   # 表在 26–42；第 44–48 行说明它，"training time" 出自第 48 行
+    task: ltsf
+    text: >
+      Case study on Traffic: channel-independent PatchTST with different look-back windows,
+      numbers of input tokens, patching and self-supervised pre-training, against channel-mixing
+      FEDformer and DLinear; plus training time with and without patching on three datasets.
+    setting: >
+      Multivariate; horizon T=96; MSE, lower is better. PatchTST rows vary the look-back window L
+      and the number of input tokens N; "down-sampled" samples every 4 steps and adds the last
+      value; the best row uses self-supervised pre-training, all others supervised training.
+      FEDformer and DLinear use L=336. Second sub-table: training running time in seconds with
+      L=336 on Traffic, Electricity and Weather, with and without patching (patch length 16,
+      stride 8, line 48).
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      DLinear's 0.410 equals DLinear-S on Traffic at T=96 in the DLinear paper's Table 4 (L=336).
+      FEDformer is reported here at L=336 (0.597), whereas Table 3 reports its best of six
+      look-back windows; the source of the FEDformer number is not stated.
+    participants:
+      - {subject: patchtst,  role: target,   origin: own}
+      - {subject: fedformer, role: baseline, origin: unstated}
+      - {subject: dlinear,   role: baseline, origin: unstated}
+    data: [traffic, elec, weather]
+    metrics: [mse, training_time]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t3
+    anchor: S4.T3
+    section: "4.1 Long-term Time series forecasting"
+    lines: [134, 169]
+    task: ltsf
+    text: >
+      Multivariate long-term forecasting on eight benchmarks with supervised PatchTST/64 and
+      PatchTST/42 against DLinear and Transformer-based baselines.
+    setting: >
+      Multivariate, supervised training; MSE and MAE, lower is better. Horizon T in {24, 36, 48, 60}
+      for ILI and {96, 192, 336, 720} for the others. Variant labels as printed: PatchTST/64 uses
+      64 input patches (L=512), PatchTST/42 uses 42 patches (L=336); both use patch length 16 and
+      stride 8. PatchTST/42 is the paper's fair comparison to DLinear and the Transformer
+      baselines (line 130). DLinear, Pyraformer and LogTrans results are collected from the
+      DLinear paper (line 128), with L=336 for DLinear (L=104 on ILI) and L=96 for Transformer
+      models. FEDformer, Autoformer and Informer were re-run with six look-back windows and the
+      best result per task is reported (line 535; on ILI L in {24, 36, 48, 60, 104, 144}, line 537).
+      PatchTST's own look-back window on ILI is not stated.
+    note: >
+      DLinear values equal DLinear-S with L=336 in the DLinear paper's Table 4 except ILI, whose
+      values do not appear in the stored version of the DLinear paper. Pyraformer MSE values on
+      Weather, Traffic, Electricity and ILI appear shifted down by one horizon relative to the
+      DLinear paper's Table 2 (e.g. Weather T=192 is 0.622, DLinear's T=96 value); the MAE values
+      and the ETT rows match.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [PatchTST/64, PatchTST/42], origin: own}
+      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: fedformer,  role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
+      - {subject: autoformer, role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
+      - {subject: informer,   role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
+      - {subject: pyraformer, role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+    data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t4
+    anchor: S4.T4
+    section: "4.2 Representation learning"
+    lines: [178, 194]
+    task: ltsf
+    text: >
+      Multivariate long-term forecasting with self-supervised PatchTST (fine-tuning, linear
+      probing) and supervised PatchTST against supervised baselines on Weather, Traffic and
+      Electricity.
+    setting: &ssl_setting >
+      Multivariate; MSE and MAE, lower is better; T in {96, 192, 336, 720}. Self-supervised
+      PatchTST: masked pre-training with input length 512 and patch size 12 (42 non-overlapping
+      patches), 40% of patches masked, 100 pre-training epochs (line 174). Variant labels as
+      printed: Fine-tuning (end-to-end fine-tuning after pre-training), Lin. Prob. (linear
+      probing: only the model head is trained), Sup. (supervised training from scratch).
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      The Sup. column and the DLinear, FEDformer, Autoformer and Informer columns equal the
+      PatchTST/42, DLinear, FEDformer, Autoformer and Informer entries of Table 3; the table does
+      not restate their source.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [Fine-tuning, Lin. Prob., Sup.], origin: own}
+      - {subject: dlinear,    role: baseline, origin: unstated}
+      - {subject: fedformer,  role: baseline, origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: informer,   role: baseline, origin: unstated}
+    data: [weather, traffic, elec]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t5
+    anchor: S4.T5
+    section: "4.2 Representation learning"
+    lines: [198, 210]
+    task: ts_repr
+    text: >
+      Transfer learning: PatchTST pre-trained on Electricity and fine-tuned or linearly probed
+      on Weather and Traffic, against supervised baselines.
+    setting: &transfer_setting >
+      Multivariate; MSE and MAE, lower is better; T in {96, 192, 336, 720}. PatchTST is
+      pre-trained on Electricity (pre-training setup as in Table 4), then Fine-tuning (end-to-end)
+      or Lin. Prob. (head only) on the target dataset; Sup. is supervised PatchTST trained from
+      scratch on the target dataset. Electricity is pre-training data, not evaluation data.
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      The Sup. column and the baseline columns equal those of Tables 3 and 4.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [Fine-tuning, Lin. Prob., Sup.], origin: own}
+      - {subject: dlinear,    role: baseline, origin: unstated}
+      - {subject: fedformer,  role: baseline, origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: informer,   role: baseline, origin: unstated}
+    data: [weather, traffic]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t6
+    anchor: S4.T6
+    section: "4.2 Representation learning"
+    lines: [214, 223]
+    task: ts_repr
+    text: >
+      Comparison of PatchTST's self-supervised representations with contrastive time-series
+      representation learning methods on ETTh1, using linear probing.
+    setting: >
+      ETTh1; MSE and MAE, lower is better; horizons T in {24, 48, 168, 336, 720}. Only the last
+      linear layer is trained on top of the learned representation (line 212). Variant labels as
+      printed: Transferred (pre-trained on Traffic, linear probing on ETTh1), Self-supervised
+      (pre-training and linear probing on ETTh1). IMP. is the improvement of PatchTST's best
+      result over the best baseline.
+    note: >
+      The horizons {24, 48, 168, 336, 720} follow a different protocol from Section 4.1, and the
+      split is not stated, so no split convention is recorded.
+    participants:
+      - {subject: patchtst, role: target,   variants: [Transferred, Self-supervised], origin: own}
+      - {subject: btsf,     role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
+      - {subject: ts2vec,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yue et al., 2022 (TS2Vec) [bib.bib38]"}}
+      - {subject: tnc,      role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
+      - {subject: ts_tcc,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
+    data: [etth1]
+    metrics: [mse, mae]
+    conditions: {split: null}
+
+  - ref: x_t7
+    anchor: S4.T7
+    section: "4.3 Ablation study"
+    lines: [230, 246]
+    task: ltsf
+    text: >
+      Ablation of patching and channel independence in supervised PatchTST/42 on Weather,
+      Traffic and Electricity, with FEDformer as reference.
+    setting: &ablation_setting >
+      Multivariate; MSE and MAE, lower is better; T in {96, 192, 336, 720}. Variant labels as
+      printed (A.4.3, lines 649-655): P+CI (patching and channel independence: the full
+      PatchTST/42), CI (channel independence only: patch length and stride set to 1), P (patching
+      with channel mixing), Original (neither: the original TST model of Zerveas et al., 2021).
+      '-' marks runs out of memory on an NVIDIA A40 48GB. For the ablation, the maximum number of
+      epochs on Electricity and Traffic is reduced from 100 to 20 (line 657).
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      FEDformer values equal Table 3 (re-run, best of six look-back windows); the table does not
+      restate their source.
+    participants:
+      - {subject: patchtst,  role: target,   variants: [P+CI, CI, P, Original], origin: own}
+      - {subject: fedformer, role: baseline, origin: unstated}
+    data: [weather, traffic, elec]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t8
+    anchor: A1.T8
+    section: "A.3 Univariate Forecasting"
+    lines: [569, 588]
+    task: ltsf
+    text: >
+      Univariate long-term forecasting on the four ETT datasets with supervised PatchTST/64 and
+      PatchTST/42 against baselines cited from the DLinear paper.
+    setting: >
+      Univariate: the target feature oil temperature is forecast (line 567). MSE and MAE, lower
+      is better; T in {96, 192, 336, 720}. Variant labels as in Table 3: PatchTST/64 (L=512),
+      PatchTST/42 (L=336).
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      Compared with the DLinear paper's Table 5: FEDformer equals FEDformer-f; DLinear on ETTh1
+      at T=720 is 0.189/0.359 here but 0.119/0.274 there; LogTrans MAE on ETTh1 at T=720 is
+      0.629 here but 0.628 there.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [PatchTST/64, PatchTST/42], origin: own}
+      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+    data: [etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t9
+    anchor: A1.T9
+    section: "A.4.2 Varying Look-back Window"
+    lines: [606, 641]
+    task: ltsf
+    text: >
+      Supervised PatchTST/42 with look-back windows from 24 to 720 on eight datasets.
+    setting: >
+      Multivariate; MSE and MAE, lower is better. Columns are look-back windows
+      L in {24, 48, 96, 192, 336, 720}; the values in parentheses, {24, 36, 48, 60, 104, 144},
+      are the look-back windows used for ILI. T in {96, 192, 336, 720}, and {24, 36, 48, 60} for ILI.
+    note: *inferred
+    participants:
+      - {subject: patchtst, role: target, variants: [PatchTST/42], origin: own}
+    data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t10
+    anchor: A1.T10
+    section: "A.4.3 Patching and Channel-independence"
+    lines: [662, 698]
+    task: ltsf
+    text: >
+      Full benchmark of the patching and channel-independence ablation of PatchTST/42 on eight
+      datasets, with FEDformer as reference.
+    setting: *ablation_setting
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      Extends Table 7. FEDformer values equal Table 3; the table does not restate their source.
+    participants:
+      - {subject: patchtst,  role: target,   variants: [P+CI, CI, P, Original], origin: own}
+      - {subject: fedformer, role: baseline, origin: unstated}
+    data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t11
+    anchor: A1.T11
+    section: "A.4.4 Instance Normalization"
+    lines: [705, 740]
+    task: ltsf
+    text: >
+      Effect of instance normalization on supervised PatchTST/64 and PatchTST/42 on eight
+      datasets, with FEDformer, Autoformer and Informer as reference.
+    setting: >
+      Multivariate; MSE and MAE, lower is better; T as in Table 3. Variant labels as printed:
+      +in with instance normalization (the default), -in without; PatchTST/64 uses L=512 and
+      PatchTST/42 uses L=336.
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      The +in columns and the baseline columns equal Table 3; the table does not restate the
+      baselines' source.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [PatchTST/64 (+in), PatchTST/64 (-in), PatchTST/42 (+in), PatchTST/42 (-in)], origin: own}
+      - {subject: fedformer,  role: baseline, origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: informer,   role: baseline, origin: unstated}
+    data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t12
+    anchor: A1.T12
+    section: "A.5.1 Full Benchmark of Multivariate Forecasting"
+    lines: [750, 782]
+    task: ltsf
+    text: >
+      Full benchmark of multivariate forecasting with self-supervised PatchTST on seven
+      datasets, against supervised PatchTST and baselines.
+    setting: *ssl_setting
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      Extends Table 4. The Sup. and baseline columns equal Table 3; the table does not restate
+      the baselines' source.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [Fine-tuning, Lin. Prob., Sup.], origin: own}
+      - {subject: dlinear,    role: baseline, origin: unstated}
+      - {subject: fedformer,  role: baseline, origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: informer,   role: baseline, origin: unstated}
+    data: [weather, traffic, elec, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t13
+    anchor: A1.T13
+    section: "A.5.2 Full Benchmark of Transfer Learning"
+    lines: [789, 817]
+    task: ts_repr
+    text: >
+      Full benchmark of transfer learning: PatchTST pre-trained on Electricity and transferred
+      to six datasets, against supervised PatchTST and baselines.
+    setting: *transfer_setting
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      Extends Table 5; the caption's "a full benchmark regarding Table 13" refers to itself and
+      presumably means Table 5. The Sup. and baseline columns equal Table 3.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [Fine-tuning, Lin. Prob., Sup.], origin: own}
+      - {subject: dlinear,    role: baseline, origin: unstated}
+      - {subject: fedformer,  role: baseline, origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: informer,   role: baseline, origin: unstated}
+    data: [weather, traffic, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t14
+    anchor: A1.T14
+    section: "A.6.1 Results with Different Random Seeds"
+    lines: [829, 860]
+    task: ltsf
+    text: >
+      Mean and standard deviation over five runs for supervised and self-supervised PatchTST/42
+      on seven datasets.
+    setting: >
+      Multivariate; MSE and MAE as mean ± standard deviation; T in {96, 192, 336, 720}.
+      Supervised: five random seeds 2019-2023; self-supervised: one pre-training, fine-tuned five
+      times with different random batch selections (lines 825-827). Results elsewhere in the
+      paper use seed 2021. Variant labels as printed: PatchTST/42 supervised, PatchTST/42
+      self-supervised.
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      The first header cell is printed as L although the columns are model variants.
+    participants:
+      - {subject: patchtst, role: target, variants: [PatchTST/42 supervised, PatchTST/42 self-supervised], origin: own}
+    data: [weather, traffic, elec, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128
+
+  - ref: x_t15
+    anchor: A1.T15
+    section: "A.7.2 Performance of Channel-independence on Other Models"
+    lines: [900, 935]
+    task: ltsf
+    text: >
+      Channel independence applied to Informer, Autoformer and FEDformer, compared with their
+      original versions and with PatchTST/42 on eight datasets.
+    setting: >
+      Multivariate; MSE and MAE, lower is better; T as in Table 3. Variant labels as printed:
+      X-CI is model X with channel independence; the plain columns are the original
+      channel-mixing models. '-' denotes running out of GPU memory or exceeding 12 hours.
+    note: >
+      Split convention inferred from the experimental setup stated in Section 4.1 (line 128).
+      The origin "cited" applies to the non-CI columns, which the caption says are cited from
+      Zeng et al. (2022); the -CI columns were run by the authors (line 898). One origin per
+      participant cannot express this split. The non-CI values match the DLinear paper's
+      Tables 2 and 3 (taken there from the FEDformer paper), not the re-run values of this
+      paper's Table 3.
+    participants:
+      - {subject: patchtst,   role: target,   variants: [PatchTST/42], origin: own}
+      - {subject: informer,   role: baseline, variants: [Informer, Informer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: autoformer, role: baseline, variants: [Autoformer, Autoformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: fedformer,  role: baseline, variants: [FEDformer, FEDformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+    data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: *split128

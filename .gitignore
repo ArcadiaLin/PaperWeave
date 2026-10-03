@@ -13,6 +13,7 @@
 !/data/raw/e09-paper-knowledge/
 /data/raw/e09-paper-knowledge/*
 !/data/raw/e09-paper-knowledge/seeds/
+!/data/raw/e09-paper-knowledge/forms/
 /data/processed/
 /data/cache/
 /models/

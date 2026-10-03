@@ -7,6 +7,7 @@
 #   make seed        种子入库（e09.seed）：重跑无副作用；有冲突或写后复核失败时返回非零
 #   make embed       建向量索引并补算向量（Resolve 的语义阶段用）；需要 embedding 服务，只补算文本变过的对象
 #   make compile     编译论文表单（不连库）：默认编译 fixtures/forms/ 下的夹具，FORMS=... 指定；有错误时返回非零
+#   make ingest      论文入库（e09.ingest）：按顺序编译、dry_run、apply 正式表单；已入库的判为不变；有阻塞项时返回非零
 #   make lab         在本目录启动 JupyterLab
 #
 # 当前用户若不在 docker 组：make neo4j-up DOCKER="sudo docker"
@@ -16,7 +17,7 @@ DOCKER ?= docker
 RUN = $(UV) run
 COMPOSE = $(DOCKER) compose -f ../../infra/neo4j-e09/docker-compose.yml
 
-.PHONY: setup neo4j-up neo4j-down check seed embed compile lab clean
+.PHONY: setup neo4j-up neo4j-down check seed embed compile ingest lab clean
 
 setup:
 	$(MAKE) -C ../.. setup
@@ -39,6 +40,9 @@ embed:
 FORMS ?= $(wildcard fixtures/forms/*.yml)
 compile:
 	$(RUN) python -m e09.form $(FORMS)
+
+ingest:
+	$(RUN) python -m e09.ingest
 
 lab:
 	mkdir -p notebooks && $(RUN) jupyter lab --notebook-dir=notebooks

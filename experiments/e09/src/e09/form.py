@@ -146,9 +146,10 @@ class Compiler:
             else:
                 rels.append((r["from"], r["type"], r["to"]))
 
-        names = {r: spec.get("mention") or spec.get("printed") for r, spec in refs.items()}
-        names |= {r: n["props"]["name"] for r, n in nodes.items()}
-        names |= {r: f["target"].get("mention") for r, f in fills.items()}
+        # 每个 ref 在原文中可能的称呼：引用写的 mention / printed；新对象的 name 与 aliases
+        names = {r: [spec.get("mention") or spec.get("printed")] for r, spec in refs.items()}
+        names |= {r: list(n["keys"].values()) for r, n in nodes.items()}
+        names |= {r: [f["target"].get("mention")] for r, f in fills.items()}
         experiments = [self.experiment(exp, domain, names, bindable) for exp in raw.get("experiments") or []]
         anchors = [e["anchor"] for e in experiments if e]
         if len(anchors) != len(set(anchors)):
@@ -219,9 +220,10 @@ class Compiler:
         # 表格范围内的原文，去掉 Markdown 强调与公式记号，供称呼核对
         table = EMPHASIS.sub("", "\n".join(self.lines[lo - 1:hi])).lower()
 
-        def printed(w, label):
-            if label and label.lower() not in table:
-                self.pending(w, f"原文表格范围（第 {lo}–{hi} 行）中找不到 {label!r}，确认称呼与绑定对象")
+        def printed(w, labels):
+            labels = [x for x in labels or [] if x]
+            if labels and not any(x.lower() in table for x in labels):
+                self.pending(w, f"原文表格范围（第 {lo}–{hi} 行）中找不到 {' / '.join(map(repr, labels))}，确认称呼与绑定对象")
 
         # 实验级条件：规则可直接判定的部分；其余写进 setting
         declared = DOMAINS[domain]["conditions"]
@@ -265,8 +267,8 @@ class Compiler:
                     self.locator(w, origin["basis"])
                 if origin["kind"] == "cited" and not origin.get("from"):
                     self.error(w, "origin=cited 必须写明转引出处 from")
-            for label in variants or [names.get(subj)]:
-                printed(w, label)
+            for labels in [[v] for v in variants] or [names.get(subj)]:
+                printed(w, labels)
             participants.append({"subject": subj, "role": part.get("role"), "variants": variants,
                                  "origin": origin.get("kind"), "origin_basis": origin.get("basis"),
                                  "origin_from": origin.get("from")})
