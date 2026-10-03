@@ -168,7 +168,7 @@ class Compiler:
         # 必写档：实验转引了哪篇论文的结果，本文就必须 CITES 它
         cited = {x["origin_from"] for e in experiments if e for x in e["participants"] if x["origin"] == "cited"}
         for f in sorted(cited - {r["to"] for r in rels if r["type"] == "CITES"} - {None}):
-            self.error("relationships", f"实验转引了 {f} 的结果，必须写 CITES paper → {f}（extraction_principles.md §7）")
+            self.error("relationships", f"实验转引了 {f} 的结果，必须写 CITES paper → {f}（extraction_principles.md §8）")
         return {"name": self.name, "form": FORM_VERSION, "domain": domain, "material": material,
                 "nodes": nodes, "refs": refs, "fills": fills, "rels": rels,
                 "experiments": [e for e in experiments if e], "coverage": anchors}

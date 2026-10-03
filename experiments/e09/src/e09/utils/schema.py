@@ -14,7 +14,7 @@ NAMESPACES = {"arxiv": True, "doi": True, "s2": True, "url": False}   # 命名�
 REL_RULES = {   # 已实现写入的关系 -> (起点主 Label, 终点主 Label, 终点 kind 限制)；§6
     "BROADER": ("Concept", "Concept", None), "OVERLAPS_WITH": ("Concept", "Concept", None),
     "PART_OF": ("Entity", "Entity", None), "FOR_TASK": ("Entity", "Concept", "Task"),
-    "CITES": ("Entity", "Entity", "Paper")}   # 论文批次：本文 → 被引论文，选择性写入（extraction_principles.md §7）
+    "CITES": ("Entity", "Entity", "Paper")}   # 论文批次：本文 → 被引论文，选择性写入（extraction_principles.md §8）
 PAPER_RELS = {"CITES"}   # 论文批次能写的关系；其余关系仍只由种子写入
 SYMMETRIC = {"OVERLAPS_WITH"}   # 语义对称，不分方向
 FORM_ONLY = {"aliases"}         # 表单字段：注册为 NameKey，不写进对象

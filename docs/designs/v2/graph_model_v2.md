@@ -1,6 +1,6 @@
 # Graph Model V2
 
-> **状态：** 候选清单（2026-10-02），尚未经真实论文入库检验；第 7 节第 1–10 项已与用户确认。列出由 workload 拆解得到的候选 Node 与 Relationship，并标出需要重新考虑的 Property。Q1–Q8 指 [v2 未定模型问题与写路径](../../discussions/2026-10-01-v2-open-model-decisions-and-write-path.md) 中的编号；D1–D11 指已定决策，正文见 [Workload 拆解](./intents_decompose.md)。
+> **状态：** 候选清单（2026-10-02）；第 7 节第 1–10 项已与用户确认。Paper、Method、Dataset、Metric、Task、Experiment 及其参与边、`CITES` 已经两篇论文（DLinear、PatchTST）的报告级入库检验（E09，2026-10-03，见 [Commit 契约](./commit_contract.md)），其余部分尚未经真实论文检验。列出由 workload 拆解得到的候选 Node 与 Relationship，并标出需要重新考虑的 Property。Q1–Q8 指 [v2 未定模型问题与写路径](../../discussions/2026-10-01-v2-open-model-decisions-and-write-path.md) 中的编号；D1–D11 指已定决策，正文见 [Workload 拆解](./intents_decompose.md)。
 
 `V2` 设计一个面向研究 Agent 的论文知识图：保存阅读后形成的理解，通过论文引用、共享方法、资源和命题连接不同论文，让后续研究能够查找、比较和复用已有经验。
 
@@ -75,7 +75,7 @@ B 的已知代价与应对：
 
 | 次级 Label | 含义 | 状态 | v1 对应 | 说明 |
 | --- | --- | --- | --- | --- |
-| `Paper` | 书目对象 | 沿用 | `Paper` | 只表达书目；论文中的方法、主张、实验在其他对象中 |
+| `Paper` | 书目对象 | 沿用 | `Paper` | 只表达书目；论文中的方法、主张、实验在其他对象中。被引但尚未入库的论文建桩节点（`stub`，只有参考文献中印的标题与引用线索，2026-10-03，[抽取原则](./extraction_principles.md) §8） |
 | `Dataset` | 数据本身 | 改写 | `Resource:Dataset` | 主 Label 由 `Resource` 改为 `Entity` |
 | `Split` | 数据切分 | 新增 | 写在描述中 | scope 为父数据集版本（D4），`PART_OF` 连到父版本 |
 | `Code` | 代码仓库 | 改写 | `Resource:CodeRepo` | 改名 |
@@ -300,7 +300,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | --- | --- | --- | --- | --- | --- |
 | `FROM` | Content → Entity | `Content.source_refs` | `material_ref`、`locators` | 改写 | 取代 v1 的来源类关系及 Node 上的 `anchor` |
 | `ABOUT` | Content → Entity / Concept | `Content.about`、`Entity.described_by` | | 沿用 | 讨论关系不表示支持；v1 的 `DESCRIBES` 并入 |
-| `EVALUATES` | Experiment / ResultUnit → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version`；`variants`（原文印的变体标签）、`origin`、`origin_basis`、`origin_from`（2026-10-03，[抽取原则](./extraction_principles.md) §2、§5） | 沿用 | Q7：立即回补 role，§6.1 依赖它 |
+| `EVALUATES` | Experiment / ResultUnit → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version`；`variants`（原文印的变体标签）、`origin`、`origin_basis`、`origin_from`（被引论文的 id；2026-10-03，[抽取原则](./extraction_principles.md) §2、§5） | 沿用 | Q7：立即回补 role，§6.1 依赖它 |
 | `USES` | Experiment / ResultUnit → Entity | `Content.participants` | `role`：training_data / evaluation_data / analysis_input / tooling / retrieval_corpus（2026-10-02 新增）；`version` | 沿用 | role 缺失时进入 `diagnostics.role_missing` |
 | `MEASURED_BY` | Experiment / ResultUnit → Metric | `Content.participants` | | 沿用 | |
 | `USES_PROTOCOL` | Experiment / ResultUnit / Observation → Protocol | `Content.protocol` | | 新增 | 实际参数留在 Content 中 |
@@ -325,7 +325,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | `VERSION_OF` | Entity → Entity | `Entity.versions` | | 新增 | 见 2.3 |
 | `PART_OF` | Entity → Entity | `Entity.parts / split_of` | | 沿用 | v1 已有 Resource 间 PART_OF；v2 用于切分 |
 | `DERIVED_FROM` | Entity → Entity | | | 沿用 | 数据、代码或模型的派生 |
-| `CITES` | Paper → Paper | | | 沿用 | 六类 intent 暂不依赖，按实例回补（Q7） |
+| `CITES` | Paper → Paper | | `source_refs`（含正文中的引用位置）、`description`（这条引用支撑了什么）；不设引用意图枚举 | 沿用，已实现（2026-10-03） | 选择性写入：转引结果时必写，对方法、主张或实验有实际作用时可写，背景引用不写；没有 `CITES` 不等于没有引用（[抽取原则](./extraction_principles.md) §8）。I3 判断两份结果是否同源时沿 `EVALUATES.origin_from` 与它查询 |
 | `IMPLEMENTS` | Code / Model → Method | `Entity.implements` | 重审：依据 | 新增 | I6 区分"论文声称公开、找到实现、成功运行、结果复现"。倾向这条边只记录"已存实现对应"并带 `source_refs`；论文的发布声明另存为 Usage，供 Observation `CHECKS`。边与 Usage 需保持一致；若负担过重，改用 §3.3 的关联节点。I6 实例中裁决 |
 | `FOR_TASK` | Dataset / Benchmark → Task | | | 沿用 | |
 
@@ -391,7 +391,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 12 | `revision`、`status`、`SUPERSEDES` | 等 Q2 | 第 1 节、6.2.5 |
 | 13 | Issue、Proposition 的归类 | 等 Q6，用 I4、I5 实例裁决 | 3.1 |
 | 14 | `IMPLEMENTS` 的依据、`INTRODUCES`、`RELATED_TO` | 等 I6 实例 | 6.2.3、6.2.6 |
-| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | E09 已实现种子部分；更新目前只能覆盖属性，不能撤销属性或 alias。**已定（2026-10-03）**：抽取口径见 [抽取原则](./extraction_principles.md)，编译、操作集、检查分工、自然键与批次记录见 [Commit 契约](./commit_contract.md)；修订与撤回仍随 Q2 | `intents_decompose.md` §5 写路径 |
+| 15 | `Commit` 契约：论文增量的表单与编译规则、操作集（create_object、link、register_name、attach_source，以及更新与撤销）、dry_run 与 apply 的批级解析 | **已定（2026-10-03）**，E09 已实现并完成两篇论文的正式入库：抽取口径见 [抽取原则](./extraction_principles.md)，编译、操作集、检查分工、自然键与批次记录见 [Commit 契约](./commit_contract.md)；修订与撤回仍随 Q2 | `intents_decompose.md` §5 写路径 |
 | 16 | 唯一命名空间标识的后端约束 | 倾向先保持事务内复查；需要后端保证时仿 NameKey 建键节点 | 2.4 |
 | 17 | 语义候选的阈值或"可能不存在"提示 | 暂不设；等真实查询中外部否定的比例出来再定 | `intents_decompose.md` §4.1 |
 
