@@ -10,7 +10,8 @@
 - 论文按唯一命名空间的标识（arXiv 等）识别；已存在即本批是重跑或补录。
 - 新对象的精确键被占用：若由同一篇论文此前注册（NameKey.registered_from），视为重跑命中；
   若占用者是桩节点，提示改用 refs 或 fill；否则为 key-taken。
-- Experiment 与 ResultUnit 按自然键 exp_key、row_key 判定新建、不变或冲突；Content 不原地修改。
+- Experiment 按自然键 exp_key 判定新建、不变或冲突；Content 不原地修改。入库是报告级：只存实验与参与对象，
+  数值留在原文（extraction_principles.md §4）。
 
 dry_run 的查询经 `run` 执行：默认是只读会话；apply 在同一写事务里传入事务执行器做复核，
 `commit=False` 时整批写入后回滚（演练），库不留改动。语义查重调用 Resolve，走只读会话，看不到未提交的写入。
@@ -21,7 +22,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from ...config import NEO4J_DB
-from ...utils.domain import DOMAINS
 from ...utils.graph import driver, q
 from ...utils.ids import IdAllocator
 from ...utils.namekey import NORMALIZER, name_key, normalize
@@ -53,8 +53,6 @@ class PaperPlan:
     registers: list = field(default_factory=list)     # (ref, 原字符串, kind)：新注册的精确键
     material: dict = field(default_factory=dict)      # {id, path, sha256, exists}
     experiments: list = field(default_factory=list)   # {exp, status: new | same}
-    results: Counter = field(default_factory=Counter)  # new / same
-    missing_in_form: list = field(default_factory=list)   # 库中有、表单中没有的结果行：只报告
     errors: list = field(default_factory=list)
     pending: list = field(default_factory=list)
     conflicts: list = field(default_factory=list)
@@ -67,7 +65,7 @@ class PaperPlan:
     @property
     def empty(self) -> bool:
         return not (self.new_nodes or self.fills or self.registers or not self.material.get("exists", True)
-                    or any(e["status"] == "new" for e in self.experiments) or self.results["new"])
+                    or any(e["status"] == "new" for e in self.experiments))
 
     def ids(self) -> dict:
         return dict(self.bind) | ({"paper": self.paper_id} if self.paper_id else {})
@@ -136,12 +134,10 @@ def dry_run(delta: dict, issues: list, run=q, semantic: bool = True) -> PaperPla
     for ref, f in delta["fills"].items():
         _plan_fill(p, ref, f, run)
 
-    # 结果行：绑定后重算行键（不同 ref 可能解析到同一对象）
     ids = p.ids()
     p.material = _plan_material(delta["material"], run)
-    domain_slots = sorted(DOMAINS[delta["domain"]]["slots"])
     for exp in delta["experiments"]:
-        _plan_experiment(p, exp, ids, domain_slots, run)
+        _plan_experiment(p, exp, ids, run)
     if delta["rels"]:
         p.errors.append({"where": "relationships", "rule": "unsupported",
                          "msg": "论文批次的 Entity / Concept 关系写入尚未实现（单篇深度原则下通常为空）"})
@@ -247,66 +243,56 @@ def _plan_material(m: dict, run) -> dict:
             "sha256": m["sha256"], "exists": bool(rows)}
 
 
-def row_key(exp_key: str, r: dict, ids: dict, slot_names: list) -> str:
-    slots = [f"{s}={'-' if r['slots'][s] is None else r['slots'][s]}" for s in slot_names]
-    return "::".join([exp_key, ids[r["subject"]], r["variant"] or "-", ids[r["data"]], ids[r["metric"]], *slots])
-
-
-def result_props(r: dict, slot_names: list) -> dict:
-    return compact({"value": r["value"], "value_num": r["value_num"], "variant": r["variant"], "origin": r["origin"],
-                    "origin_basis": r["origin_basis"], "origin_from": r["origin_from"], "note": r["note"],
-                    **{f"slot_{s}": r["slots"][s] for s in slot_names}})
-
-
-def experiment_props(exp: dict, ids: dict) -> dict:
+def experiment_props(exp: dict) -> dict:
     return compact({"anchor": exp["anchor"], "section": exp["section"], "lines": exp["lines"], "text": exp["text"],
-                    "setting": exp["setting"], "slot_basis": [f"{s}={loc}" for s, loc in sorted(exp["slot_basis"].items())] or None,
-                    "task": ids.get(exp["task"])})
+                    "setting": exp["setting"], "note": exp["note"],
+                    **{f"cond_{c}": v for c, v in exp["conditions"].items()},
+                    "condition_basis": [f"{c}={loc}" for c, loc in sorted(exp["condition_basis"].items())] or None})
 
 
-def _plan_experiment(p: PaperPlan, exp: dict, ids: dict, slot_names: list, run):
-    where = f"experiments.{exp['anchor']}"
-    if not p.paper_id:   # 新论文：实验必然是新的；行键在 apply 中按分配到的 id 计算
-        p.experiments.append({"exp": exp, "status": "new"})
-        p.results["new"] += len(exp["results"])
-        return
-    unbound = {r[k] for r in exp["results"] for k in ("subject", "data", "metric") if r[k] not in ids}
-    exp_key = f"{p.paper_id}::{exp['anchor']}"
-    rows = run("MATCH (e:Experiment {exp_key: $k}) OPTIONAL MATCH (e)-[:ON_TASK]->(t) "
-               "RETURN properties(e) AS props, t.id AS task", k=exp_key)
+def evaluates_props(x: dict) -> dict:
+    return compact({"role": x["role"], "variants": x["variants"] or None, "origin": x["origin"],
+                    "origin_basis": x["origin_basis"], "origin_from": x["origin_from"]})
+
+
+def experiment_view(exp: dict, ids: dict) -> dict:
+    """实验在库中应有的样子：属性、任务与三类参与边；dry_run 与库中现状逐项比较。"""
+    return {"props": experiment_props(exp), "task": ids[exp["task"]],
+            "evaluates": sorted((ids[x["subject"]], tuple(sorted(evaluates_props(x).items(), key=str))) for x in exp["participants"]),
+            "uses": sorted(ids[d] for d in exp["data"]), "measured_by": sorted(ids[m] for m in exp["metrics"])}
+
+
+def stored_view(exp_key: str, run) -> dict | None:
+    rows = run("""MATCH (e:Experiment {exp_key: $k})
+                  OPTIONAL MATCH (e)-[:ON_TASK]->(t)
+                  RETURN properties(e) AS props, t.id AS task,
+                         COLLECT { MATCH (e)-[r:EVALUATES]->(s) RETURN [s.id, properties(r)] } AS evaluates,
+                         COLLECT { MATCH (e)-[:USES]->(d) RETURN d.id } AS uses,
+                         COLLECT { MATCH (e)-[:MEASURED_BY]->(m) RETURN m.id } AS measured_by""", k=exp_key)
     if not rows:
+        return None
+    r = rows[0]
+    return {"props": {k: v for k, v in r["props"].items() if k not in ("id", "exp_key")}, "task": r["task"],
+            "evaluates": sorted((sid, tuple(sorted(props.items(), key=str))) for sid, props in r["evaluates"]),
+            "uses": sorted(r["uses"]), "measured_by": sorted(r["measured_by"])}
+
+
+def _plan_experiment(p: PaperPlan, exp: dict, ids: dict, run):
+    where = f"experiments.{exp['anchor']}"
+    stored = stored_view(f"{p.paper_id}::{exp['anchor']}", run) if p.paper_id else None
+    if stored is None:   # 新论文，或已有论文的新表
         p.experiments.append({"exp": exp, "status": "new"})
-        p.results["new"] += len(exp["results"])
         return
-    if unbound:
+    refs = [x["subject"] for x in exp["participants"]] + exp["data"] + exp["metrics"] + [exp["task"]]
+    if unbound := sorted({r for r in refs if r not in ids}):
         p.conflicts.append({"where": where, "rule": "experiment-objects",
-                            "msg": f"实验已在库中，但其中的对象 {sorted(unbound)} 是本批新建的"})
+                            "msg": f"实验已在库中，但其中的对象 {unbound} 是本批新建的"})
         return
-    db = {k: v for k, v in rows[0]["props"].items() if k not in ("id", "exp_key")} | compact({"task": rows[0]["task"]})
-    form = experiment_props(exp, ids)
-    if db != form:
-        diff = sorted(k for k in set(db) | set(form) if db.get(k) != form.get(k))
-        p.conflicts.append({"where": where, "rule": "experiment-changed", "msg": f"实验已在库中且字段 {diff} 不同"})
+    view = experiment_view(exp, ids)
+    if diff := [k for k in view if view[k] != stored[k]]:
+        p.conflicts.append({"where": where, "rule": "experiment-changed", "msg": f"实验已在库中且 {diff} 不同"})
         return
     p.experiments.append({"exp": exp, "status": "same"})
-    existing = {r["row_key"]: {k: v for k, v in r["props"].items() if k != "row_key"} for r in run(
-        "MATCH (:Experiment {exp_key: $k})-[:HAS_RESULT]->(r:ResultUnit) RETURN r.row_key AS row_key, properties(r) AS props",
-        k=exp_key)}
-    seen = set()
-    for r in exp["results"]:
-        key = row_key(exp_key, r, ids, slot_names)
-        if key in seen:
-            p.errors.append({"where": where, "rule": "row-key-duplicate", "msg": f"绑定后行键重复 {key}"})
-            continue
-        seen.add(key)
-        if key not in existing:
-            p.results["new"] += 1
-        elif existing[key] == result_props(r, slot_names):
-            p.results["same"] += 1
-        else:
-            p.conflicts.append({"where": f"{where} {r['locator']}", "rule": "result-changed",
-                                "msg": f"结果行已在库中且内容不同：{key}"})
-    p.missing_in_form += sorted(set(existing) - seen)
 
 
 # ── apply ──
@@ -354,44 +340,30 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
               WITH m MATCH (paper:Entity:Paper {id: $paper}) MERGE (m)-[:MATERIAL_OF]->(paper)""",
            h=m["sha256"], id=m["id"], path=m["path"], paper=paper_id)
 
-    # 实验与结果行
-    slot_names = sorted(DOMAINS[delta["domain"]]["slots"])
+    # 实验：报告级，实验本身与三类参与边
     for e in p.experiments:
         if e["status"] != "new":
             continue
         exp = e["exp"]
-        eid, exp_key = alloc.new("Experiment"), f"{paper_id}::{exp['anchor']}"
-        props = {"id": eid, "exp_key": exp_key, **experiment_props(exp, ids)}
-        props.pop("task", None)
+        eid = alloc.new("Experiment")
+        props = {"id": eid, "exp_key": f"{paper_id}::{exp['anchor']}", **experiment_props(exp)}
         loc = f"{exp['section']}::{exp['lines'][0]}:{exp['lines'][1]}"
         tx.run("""MATCH (paper:Entity:Paper {id: $paper}), (t:Concept:Task {id: $task})
                   CREATE (e:Content:Experiment) SET e = $props
                   CREATE (e)-[:FROM {material_ref: $mat, locators: [$loc]}]->(paper)
                   CREATE (e)-[:ON_TASK]->(t)""",
                paper=paper_id, task=ids[exp["task"]], props=props, mat=m["id"], loc=loc)
-        part = exp["participants"]
-        tx.run("""MATCH (e:Experiment {id: $e})
-                  UNWIND $ev AS ev MATCH (s:Entity|Concept {id: ev.id}) CREATE (e)-[:EVALUATES {role: ev.role}]->(s)""",
-               e=eid, ev=[{"id": ids[s], "role": role} for s, role in part["evaluates"]])
-        tx.run("MATCH (e:Experiment {id: $e}) UNWIND $ds AS d MATCH (x:Entity {id: d}) "
-               "CREATE (e)-[:USES {role: 'evaluation_data'}]->(x)", e=eid, ds=[ids[d] for d in part["uses"]])
-        tx.run("MATCH (e:Experiment {id: $e}) UNWIND $ms AS m MATCH (x:Concept {id: m}) CREATE (e)-[:MEASURED_BY]->(x)",
-               e=eid, ms=[ids[x] for x in part["measured_by"]])
-        rows = [{"key": row_key(exp_key, r, ids, slot_names), "props": result_props(r, slot_names),
-                 "subject": ids[r["subject"]], "role": r["role"], "data": ids[r["data"]], "metric": ids[r["metric"]],
-                 "loc": r["locator"]} for r in exp["results"]]
-        c = tx.run("""MATCH (e:Experiment {id: $e}), (paper:Entity:Paper {id: $paper})
-                      UNWIND $rows AS row
-                      MATCH (s:Entity|Concept {id: row.subject}), (d:Entity {id: row.data}), (mt:Concept {id: row.metric})
-                      CREATE (r:ResultUnit) SET r = row.props, r.row_key = row.key
-                      CREATE (e)-[:HAS_RESULT]->(r)
-                      CREATE (r)-[:EVALUATES {role: row.role}]->(s)
-                      CREATE (r)-[:USES {role: 'evaluation_data'}]->(d)
-                      CREATE (r)-[:MEASURED_BY]->(mt)
-                      CREATE (r)-[:FROM {material_ref: $mat, locators: [row.loc]}]->(paper)
-                      RETURN count(r) AS c""", e=eid, paper=paper_id, rows=rows, mat=m["id"]).single()["c"]
-        if c != len(rows):
-            raise RuntimeError(f"{exp['anchor']}：{len(rows)} 个结果行只写入 {c} 个（端点没匹配上）")
+        edges = {
+            "EVALUATES": ("Entity|Concept", [{"id": ids[x["subject"]], "props": evaluates_props(x)} for x in exp["participants"]]),
+            "USES": ("Entity", [{"id": ids[d], "props": {"role": "evaluation_data"}} for d in exp["data"]]),
+            "MEASURED_BY": ("Concept", [{"id": ids[x], "props": {}} for x in exp["metrics"]]),
+        }
+        for rel, (labels, rows) in edges.items():
+            c = tx.run(f"""MATCH (e:Experiment {{id: $e}}) UNWIND $rows AS row
+                           MATCH (x:{labels} {{id: row.id}}) CREATE (e)-[r:{rel}]->(x) SET r = row.props
+                           RETURN count(r) AS c""", e=eid, rows=rows).single()["c"]
+            if c != len(rows):
+                raise RuntimeError(f"{exp['anchor']} 的 {rel}：{len(rows)} 条只写入 {c} 条（端点没匹配上）")
 
     # 批次记录
     last = run("MATCH (b:IngestBatch) RETURN max(toInteger(substring(b.id, 6))) AS m")[0]["m"] or 0
@@ -404,7 +376,8 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
                "coverage": delta["coverage"], "committed_by": committed_by, "rounds": rounds,
                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                **{f"stat_{k}": v for k, v in p.stats.items()},
-               "new_objects": len(p.new_nodes), "filled_objects": len(p.fills), "new_results": p.results["new"]}))
+               "new_objects": len(p.new_nodes), "filled_objects": len(p.fills),
+               "new_experiments": sum(e["status"] == "new" for e in p.experiments)}))
     ids["_batch"] = bid
     return ids
 
@@ -446,11 +419,9 @@ def paper_summary(p: PaperPlan) -> str:
     lines = [f"== {name} ==",
              f"论文    {'已在库中 ' + p.paper_id if p.paper_id else '新建'}",
              f"对象    新建 {len(p.new_nodes)} · 补全 {len(p.fills)} · 不变 {len(p.same_nodes)} · 新注册称呼 {len(p.registers)}",
-             f"实验    {dict(Counter(e['status'] for e in p.experiments))} · 结果行 新建 {p.results['new']} · 不变 {p.results['same']}",
+             f"实验    {dict(Counter(e['status'] for e in p.experiments))}",
              f"材料    {'已在库中' if p.material.get('exists') else '新建'} {p.material.get('id', '')}",
              f"解析    {dict(p.stats)}"]
-    if p.missing_in_form:
-        lines.append(f"库中有、表单中没有的结果行 {len(p.missing_in_form)} 个（只报告，不删除）")
     for label, items in (("错误", p.errors), ("待确认", p.pending), ("冲突", p.conflicts)):
         lines += [f"  [{label}] {i['where']}：{i['msg']}" for i in items]
     lines.append("→ 有阻塞项，apply 会拒绝整批" if p.blocked else ("→ 与库内容一致，无需写入" if p.empty else "→ 可以 apply"))

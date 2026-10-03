@@ -1,6 +1,6 @@
 # Commit 契约：论文增量的入库
 
-> **状态：** 已定（2026-10-03）。E09 已实现 compile（`form.py`）、dry_run 与 apply（`operators/commit/paper.py`），只用部分行夹具做过演练（写入后回滚）；论文增量中的 Entity / Concept 关系写入尚未实现。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
+> **状态：** 已定（2026-10-03），首版为报告级。E09 已实现 compile（`form.py`）、dry_run 与 apply（`operators/commit/paper.py`），只用夹具做过演练（写入后回滚）；论文增量中的 Entity / Concept 关系写入尚未实现。行级（ResultUnit）版本见提交 `f95631b`。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
 
 ## 1. 流程与职责
 
@@ -23,19 +23,19 @@
 - **跨批依赖**：靠提交顺序保证。引用的对象所在的批次尚未提交时，dry_run 报"引用无法解析"。
 - **边界**：中间件只做确定性检查与执行；同一性、称呼指向、冲突怎么处理由 Agent 判断（[研究顶层设计](./research_design_v2.md)）。
 
-## 2. 表单（paper-form-v1）
+## 2. 表单（paper-form-v2，报告级）
 
 | 字段 | 内容 |
 | --- | --- |
-| `form`、`domain` | 表单版本；领域配置名（如 `ltsf`，决定可用的条件槽与切分约定） |
+| `form`、`domain` | 表单版本；领域配置名（如 `ltsf`，决定可用的实验级条件与切分约定） |
 | `material` | 材料路径与内容哈希 |
 | `paper` | 论文本身：`labels`、`properties`（name、identifiers、description） |
 | `refs` | 已有对象：`{mention, kind}`；或经确认的 `{id, printed?, register?}`，`register: true` 表示把 `printed` 注册为该对象的新 alias（笔误不注册） |
 | `objects` | 新对象：核心方法与桩节点（`stub: true`），带 `rejected`；补全桩节点用 `fill: {id 或 mention}` |
 | `relationships` | Entity / Concept 之间的关系；论文批次按单篇深度原则通常为空 |
-| `experiments` | 每张表一项：`anchor`、`section`、`lines`、`task`、`text`、`setting`、`slots`、`slot_basis`、`columns`、`rows` |
+| `experiments` | 每张表一项：`anchor`、`section`、`lines`（表的行范围）、`task`、`text`、`setting`、`note`、`participants`（`subject`、`role`、`variants`、`origin`）、`data`、`metrics`、`conditions`、`condition_basis` |
 
-结果表、条件槽、变体、来源性质的写法见 [抽取原则](./extraction_principles.md) §2–§6。`x-` 开头的键只作 YAML 复用，编译时忽略。
+实验、变体、来源性质、切分约定的写法见 [抽取原则](./extraction_principles.md) §2–§6。入库是报告级：只存实验与参与对象，数值留在原文。`x-` 开头的键只作 YAML 复用，编译时忽略。
 
 ## 3. 操作集
 
@@ -45,24 +45,22 @@
 | `register_name` | `NameKey` 与 `NAMES` |
 | `fill_stub` | 补全桩节点：**只填空字段**，去掉 `stub` |
 | `add_material` | `Material`（路径、内容哈希）与 `MATERIAL_OF` |
-| `add_experiment` | `Content:Experiment`，与 `FROM`、`ON_TASK`；实验级 `EVALUATES` / `USES` / `MEASURED_BY` 由编译器取结果行的并集 |
-| `add_result` | `ResultUnit`，与 `HAS_RESULT`、`EVALUATES {role}`、`USES {role: evaluation_data}`、`MEASURED_BY`、`FROM` |
+| `add_experiment` | `Content:Experiment`，与 `FROM`、`ON_TASK`、`EVALUATES {role, variants, origin, origin_basis, origin_from}`、`USES {role: evaluation_data}`、`MEASURED_BY` |
 | `link` | Entity / Concept 之间的关系 |
 | `record_batch` | `IngestBatch` 系统记录（第 6 节） |
 
-ResultUnit 上的属性：`value`、`value_num`、`variant`、`origin`、`origin_basis`、`note`，以及按领域配置展开的槽 `slot_<name>`。
+Experiment 上的属性：`exp_key`、`anchor`、`section`、`lines`、`text`、`setting`、`note`，领域配置声明的条件 `cond_<name>`（首版只有 `cond_split`）与其依据 `condition_basis`。
 
 ## 4. 检查与返回
 
 | 阶段 | 检查 | 返回类别 |
 | --- | --- | --- |
-| compile | 表单结构与未知字段；槽已声明且合语法；逐格覆盖引用的列存在；行与列不同时给同一个槽；实验内行键唯一；锚点逐行核对（预测长度与数值）；依据的定位在材料范围内；桩节点不写定义、非桩必须写；`rerun` / `cited` 必须给依据；`value_num` 解析 | **错误** |
-| compile | 原文印的数据名与所绑定对象不同名 | **待确认** |
+| compile | 表单结构与未知字段；主锚点在材料中、表的行范围不越界；条件已声明且合语法，切分约定须给依据；依据的定位在材料范围内；同一实验中被测对象不重复、至少一个 target；桩节点不写定义、非桩必须写；`rerun` / `cited` 必须给依据，`cited` 须写出处 | **错误** |
+| compile | 表单里的方法名或变体标签、数据集与指标的称呼不在原文这张表的行范围内 | **待确认** |
 | dry_run | 引用在 id / alias 级唯一命中 | 否则**待确认**（附候选） |
 | dry_run | 新对象的语义近邻全部列入 `rejected`；桩节点只走 id、alias 与名称词面通道 | 否则**待确认** |
 | dry_run | 新对象的精确键或唯一标识（如 arXiv 号）已被占用；新对象撞上已有桩节点（提示改用 `fill`） | **冲突** |
-| dry_run | 自然键已存在：内容相同为不变，内容不同为冲突 | **不变** / **冲突** |
-| dry_run | 库中有、表单中没有的结果行 | **报告**，不删除 |
+| dry_run | 实验的自然键已存在：属性、任务与三类参与边都相同为不变，否则为冲突 | **不变** / **冲突** |
 
 三类阻塞项的处理方不同：**错误**由 Agent 改表单；**待确认**由 Agent 做语义判断；**冲突**是与库内状态矛盾，由外部决定（改为引用、`fill`、改名或交人工）。有任何一类时 apply 拒绝整批。
 
@@ -71,11 +69,10 @@ ResultUnit 上的属性：`value`、`value_num`、`variant`、`origin`、`origin
 | 对象 | 自然键（存为属性，带唯一约束） |
 | --- | --- |
 | Experiment | `exp_key = <论文 id>::<主锚点>` |
-| ResultUnit | `row_key = <exp_key>::<被测对象 id>::<变体>::<数据 id>::<指标 id>::<各槽值>` |
 
 - 同一表单重跑：全部为不变，不写入。写入中途失败时事务回滚，可直接重试。
-- 值有变化：冲突，拒绝写入。Content 不原地修改；修订操作随 Q2 与维护演练再定。
-- 表单删去的行：库中不删，plan 报告。撤回随维护设计再定。
+- 实验内容有变化：冲突，拒绝写入。Content 不原地修改；修订操作随 Q2 与维护演练再定。
+- 同一论文补录另一张表：论文按标识命中，新增一个 Experiment。表单中没有的实验不删除（可能来自其他批次）；撤回随维护设计再定。
 - 写后复核不为空：说明 `Commit` 自身有缺陷，报错。
 
 ## 6. 批次记录

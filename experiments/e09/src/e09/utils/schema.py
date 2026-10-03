@@ -1,7 +1,7 @@
 """graph_model_v2.md 的机器可读部分：kind、命名空间、关系端点与 id 前缀。
 
 与 docs/designs/v2/graph_model_v2.md 不一致时以文档为准，改这里。
-覆盖种子与首个 I3 实例用到的部分：Content 只有 Experiment，另有 ResultUnit、Material、IngestBatch。
+覆盖种子与首个 I3 实例用到的部分：Content 只有 Experiment（报告级），另有 Material、IngestBatch。
 """
 
 KINDS = {"Entity": ["Paper", "Dataset", "Split", "Code", "Model", "Benchmark"],         # §2.1
@@ -30,10 +30,11 @@ CONSTRAINTS = [
     # 论文增量的自然键（commit_contract.md §5）与系统记录
     "CREATE CONSTRAINT content_id IF NOT EXISTS FOR (n:Content) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT experiment_key IF NOT EXISTS FOR (n:Experiment) REQUIRE n.exp_key IS UNIQUE",
-    "CREATE CONSTRAINT result_row_key IF NOT EXISTS FOR (r:ResultUnit) REQUIRE r.row_key IS UNIQUE",
     "CREATE CONSTRAINT material_hash IF NOT EXISTS FOR (m:Material) REQUIRE m.content_hash IS UNIQUE",
     "CREATE CONSTRAINT batch_id IF NOT EXISTS FOR (b:IngestBatch) REQUIRE b.id IS UNIQUE",
 ]
+# 已退役的约束：ensure_schema 删除。result_row_key 属于行级入库（f95631b），首版改为报告级后不用
+RETIRED_CONSTRAINTS = ["result_row_key"]
 
 # 全文索引：名称 -> (Label, 字段, 分词方式)。检索字段按类别声明（intents_decompose.md §6.2）
 # - namekey_raw：名称词面通道。名称与 alias 都在 NameKey 上，对象上没有 aliases 列表；默认分词，不做词形还原

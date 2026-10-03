@@ -206,7 +206,9 @@ Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述�
 | `evidence` | Observation | 否 | 沿用 | 检查日志或产物路径，作用相当于 source_refs，但材料不是论文 |
 | `condition_id`、`value`、`origin`、`rule_ref` / `call_id`、`rationale`、`made_at`、`validity` | Assessment | `condition_id` 精确 | 候选 | 即持久化的 `PredRow`：`value` 取 T / F / U，`origin` 取 rule / agent，`validity` 取 valid / stale。被判断对象与依据用关系表达（6.2.5），依据必须固定到 `{id, revision}` |
 
-### 4.3 ResultUnit：结果表的一行（已定，2026-10-02）
+### 4.3 ResultUnit：结果表的一行（已定，2026-10-02；首版不用，2026-10-03）
+
+> **首版不用（2026-10-03）。** 首版入库为报告级：只存 Experiment 与实验级参与边，数值留在原文，比较时按锚点读取（[抽取原则](./extraction_principles.md) §4）。ResultUnit 保留为精度上限与日后对照的升级选项；行级入库的实现见提交 `f95631b`。下文为当时的设计。
 
 D1 规定结果精度上限为表格行，行键为 `(被测对象 ref, 切分或版本 ref, 指标 ref)`，附 value、unit、direction 和表格行锚点。ResultUnit 是这一行的物理表示，属于 Experiment 视图的组成部分。
 
@@ -232,7 +234,7 @@ D2 把四项可比性条件放进领域配置。它们在图中有不同的去�
 
 | 条件 | 去处 | 状态 |
 | --- | --- | --- |
-| 数据集版本与切分 | `USES` 指向 Split 或数据集，版本记在 `USES.version` 上（2.3）；原文只声明沿用某个切分约定时，记为结果行的 `split` 槽（`convention:<name>`），见 [抽取原则](./extraction_principles.md) §4 | 已定 |
+| 数据集版本与切分 | `USES` 指向 Split 或数据集，版本记在 `USES.version` 上（2.3）；原文只声明沿用某个切分约定时，记为 Experiment 的 `cond_split`（`convention:<name>`），见 [抽取原则](./extraction_principles.md) §4 | 已定 |
 | 指标定义（含 @k） | `MEASURED_BY` 指向 Metric | 已定 |
 | 候选集或语料 | `USES {role: "retrieval_corpus"}` 指向 Dataset | 已定：新增 USES role，规则即可判定 |
 | 是否重排序 | `setting` 文本 | 已定：首版由 $A_{\text{pred}}$ 判断；I3 实例显示规则可以决定时再提升 |
@@ -298,7 +300,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | --- | --- | --- | --- | --- | --- |
 | `FROM` | Content → Entity | `Content.source_refs` | `material_ref`、`locators` | 改写 | 取代 v1 的来源类关系及 Node 上的 `anchor` |
 | `ABOUT` | Content → Entity / Concept | `Content.about`、`Entity.described_by` | | 沿用 | 讨论关系不表示支持；v1 的 `DESCRIBES` 并入 |
-| `EVALUATES` | Experiment / ResultUnit → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version` | 沿用 | Q7：立即回补 role，§6.1 依赖它 |
+| `EVALUATES` | Experiment / ResultUnit → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version`；`variants`（原文印的变体标签）、`origin`、`origin_basis`、`origin_from`（2026-10-03，[抽取原则](./extraction_principles.md) §2、§5） | 沿用 | Q7：立即回补 role，§6.1 依赖它 |
 | `USES` | Experiment / ResultUnit → Entity | `Content.participants` | `role`：training_data / evaluation_data / analysis_input / tooling / retrieval_corpus（2026-10-02 新增）；`version` | 沿用 | role 缺失时进入 `diagnostics.role_missing` |
 | `MEASURED_BY` | Experiment / ResultUnit → Metric | `Content.participants` | | 沿用 | |
 | `USES_PROTOCOL` | Experiment / ResultUnit / Observation → Protocol | `Content.protocol` | | 新增 | 实际参数留在 Content 中 |
@@ -380,7 +382,7 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 3 | 精确键用 `NameKey` 还是 `aliases` 列表 | **已定（2026-10-02）**：`NameKey`，对象上不存列表 | 第 5 节 |
 | 4 | Paper `title` → `name`；`identifiers` 的存储；Paper `description` | **已定（2026-10-02）**：改名；字符串列表；description 存摘要，任务相关理解写入 note | 2.2 |
 | 5 | 版本节点的建立时机与命名；版本未知时 Split 挂在哪里 | **已定（2026-10-02）**：修订级版本默认记在使用边的 `version` 上，只在版本自身需要挂结构时建节点；未写版本归原实体 | 2.3 |
-| 6 | ResultUnit 的边名、Label、`value` 类型 | **已定（2026-10-02）**：复用参与边；只带 `ResultUnit`；原文与数值都存，数值比较不理想时回退原文交 Agent | 4.3 |
+| 6 | ResultUnit 的边名、Label、`value` 类型 | **已定（2026-10-02）**：复用参与边；只带 `ResultUnit`；原文与数值都存，数值比较不理想时回退原文交 Agent。首版不用（2026-10-03）：入库为报告级 | 4.3 |
 | 7 | 可比性条件哪些进入结构 | **已定（2026-10-02）**：版本、切分、指标、语料进入结构；重排序留在文本 | 4.4 |
 | 8 | Method 与 MethodConcept 合并 | **已定（2026-10-02）**：合并，用 `BROADER`；`BROADER` 不承担变体（2026-10-03，见 [抽取原则](./extraction_principles.md) §2） | 3.1 |
 | 9 | `Observation.kind` 改名为 `check_level` | **已定（2026-10-02）** | 4.2 |

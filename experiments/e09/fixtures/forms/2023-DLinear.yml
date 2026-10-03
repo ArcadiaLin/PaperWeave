@@ -1,14 +1,8 @@
-# 入库表单样例 paper-form-v1：编译与 Commit 的检验夹具，只覆盖一张表的部分行，不是正式入库表单
-# 范围：DLinear Table 4（S5.T4）中 ETTh1 与 ILI 两组行。
-#
-# 引用三种写法：
-#   refs:     已有对象，只写称呼 + kind；编译只走 id / alias 两级，唯一命中才通过
-#   objects:  新对象；rejected 列出外部判断"不是同一对象"的语义近邻（id）
-#   本文件内的 ref：表单内互相引用
-# 结果表按原表结构录入：行 = (数据, 槽)，列 = (被测对象, 指标)；编译器展开为 ResultUnit。
-# 槽的取值优先级：cell > row / column > table；row 与 column 同时给同一个槽而没有 cell 覆盖时，编译报错。
+# 入库表单夹具 paper-form-v2（报告级）：编译与 Commit 的检验用例，各只录一张表，不是正式入库表单。
+# 报告级只记录实验在哪张表、比了谁、在哪些数据集与指标上、实验级条件；数值留在原文，比较时按锚点读取。
+# 写法见 docs/designs/v2/extraction_principles.md 与 commit_contract.md。
 
-form: paper-form-v1
+form: paper-form-v2
 domain: ltsf
 material: {path: papers/2023-DLinear/paper.md, sha256: 1ec346c934e6ebac616e861bd0fa46fcb56157bd0a8ed7190be29dffa3ee1065}
 
@@ -25,6 +19,13 @@ paper:
 refs:
   ltsf:   {mention: LTSF, kind: Task}
   etth1:  {mention: ETTh1, kind: Dataset}
+  etth2:  {mention: ETTh2, kind: Dataset}
+  ettm1:  {mention: ETTm1, kind: Dataset}
+  ettm2:  {mention: ETTm2, kind: Dataset}
+  elec:   {id: dataset_0006, printed: Eletricity}   # 原文表 4 印作 "Eletricity"（笔误）：按 id 绑定，不注册为 alias
+  exch:   {mention: Exchange, kind: Dataset}
+  traffic: {mention: Traffic, kind: Dataset}
+  weather: {mention: Weather, kind: Dataset}
   ili:    {mention: ILI, kind: Dataset}
   mse:    {mention: MSE, kind: Metric}
   mae:    {mention: MAE, kind: Metric}
@@ -62,28 +63,22 @@ experiments:
     task: ltsf
     text: >
       Multivariate long-term forecasting on nine benchmarks comparing DLinear with a long
-      look-back window (L=336) against FEDformer and Autoformer kept at their best setting (L=96).
+      look-back window against FEDformer and Autoformer kept at their best setting.
     setting: >
-      Multivariate. Lower is better for both metrics. Variant labels as printed:
-      DLinear-S shares one linear layer across all variates (the paper's default);
-      DLinear-I uses an individual linear layer per variate.
-      FEDformer-f / FEDformer-w are FEDformer with Fourier / wavelet enhanced blocks.
-    slots: {lookback: "336", split: "convention:ltsf-autoformer"}   # 表级默认：lookback 出自表标题
-    slot_basis: {split: "5.2 Comparison of Multivariate Forecasting with Transformers::203:203"}   # "沿用前人设置"映射到切分约定的原文依据
-    columns:
-      - {subject: dlinear,    variant: DLinear-S,   role: target,   metrics: [mse, mae], origin: own}
-      - {subject: dlinear,    variant: DLinear-I,   role: target,   metrics: [mse, mae], origin: own}
-      - {subject: fedformer,  variant: FEDformer-f, role: baseline, metrics: [mse, mae], origin: unstated, slots: {lookback: "96"}}
-      - {subject: fedformer,  variant: FEDformer-w, role: baseline, metrics: [mse, mae], origin: unstated, slots: {lookback: "96"}}
-      - {subject: autoformer,                       role: baseline, metrics: [mse, mae], origin: unstated, slots: {lookback: "96"}}
-    rows:
-      - {data: etth1, horizon: "96",  line: 255, values: ["0.375", "0.399", "0.377", "0.397", "0.376", "0.419", "0.395", "0.424", "0.449", "0.459"]}
-      - {data: etth1, horizon: "192", line: 256, values: ["0.405", "0.416", "0.413", "0.421", "0.420", "0.448", "0.469", "0.470", "0.500", "0.482"]}
-      - {data: etth1, horizon: "336", line: 257, values: ["0.439", "0.443", "0.440", "0.439", "0.459", "0.465", "0.530", "0.499", "0.521", "0.496"]}
-      - {data: etth1, horizon: "720", line: 258, values: ["0.472", "0.490", "0.476", "0.481", "0.506", "0.507", "0.598", "0.544", "0.514", "0.512"]}
-      # ILI 只有 966 个时间步：L=336 加 T=720 超过整条序列。原文 HTML 即如此印刷，录入照抄，疑点写进 note
-      - {data: ili, horizon: "96",  line: 287, values: ["2.108", "1.074", "2.007", "0.953", "3.228", "1.260", "2.203", "0.963", "3.483", "1.287"],
-         note: "Horizon as printed; implausible for ILI (966 steps) with L=336. Possibly 24/36/48/60 as in Table 2."}
-      - {data: ili, horizon: "192", line: 288, values: ["2.332", "1.078", "2.175", "0.979", "2.679", "1.080", "2.272", "0.976", "3.103", "1.148"]}
-      - {data: ili, horizon: "336", line: 289, values: ["2.088", "1.011", "2.202", "0.999", "2.622", "1.078", "2.209", "0.981", "2.669", "1.085"]}
-      - {data: ili, horizon: "720", line: 290, values: ["2.299", "1.078", "2.348", "1.066", "2.857", "1.157", "2.545", "1.061", "2.770", "1.125"]}
+      Multivariate; MSE and MAE, lower is better. Look-back window L=336 for DLinear;
+      FEDformer and Autoformer keep L=96, their best setting. Forecasting horizon
+      T in {96, 192, 336, 720}. Variant labels as printed: DLinear-S shares one linear layer
+      across all variates (the paper's default); DLinear-I uses an individual linear layer per
+      variate; FEDformer-f / FEDformer-w are FEDformer with Fourier / wavelet enhanced blocks.
+    note: >
+      ILI rows are printed with horizons 96-720, implausible for ILI (966 time steps) with L=336.
+      The FEDformer-f and Autoformer values on ILI equal Table 2's ILI values at horizons 24-60,
+      so the horizon labels are likely misprinted and those baseline values likely reused from Table 2.
+    participants:
+      - {subject: dlinear,    role: target,   variants: [DLinear-S, DLinear-I], origin: own}
+      - {subject: fedformer,  role: baseline, variants: [FEDformer-f, FEDformer-w], origin: unstated}
+      - {subject: autoformer, role: baseline, origin: unstated}
+    data: [etth1, etth2, ettm1, ettm2, elec, exch, traffic, weather, ili]
+    metrics: [mse, mae]
+    conditions: {split: "convention:ltsf-autoformer"}
+    condition_basis: {split: "5.2 Comparison of Multivariate Forecasting with Transformers::203:203"}   # "following the experimental setting of previous work [27, 29, 28]"
