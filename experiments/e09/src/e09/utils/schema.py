@@ -11,9 +11,11 @@ FAMILY = {k: f for f, ks in KINDS.items() for k in ks}                          
 SEED_KINDS = {"Entity": {"Dataset", "Model", "Benchmark"}, "Concept": {"Task", "Method", "Metric"}}   # 种子只预置这些
 REQUIRED = {"Entity": "description", "Concept": "definition"}
 NAMESPACES = {"arxiv": True, "doi": True, "s2": True, "url": False}   # 命名空间 -> 是否唯一（§2.4）
-REL_RULES = {   # 种子用到的关系 -> (起点主 Label, 终点主 Label, 终点 kind 限制)；§6
+REL_RULES = {   # 已实现写入的关系 -> (起点主 Label, 终点主 Label, 终点 kind 限制)；§6
     "BROADER": ("Concept", "Concept", None), "OVERLAPS_WITH": ("Concept", "Concept", None),
-    "PART_OF": ("Entity", "Entity", None), "FOR_TASK": ("Entity", "Concept", "Task")}
+    "PART_OF": ("Entity", "Entity", None), "FOR_TASK": ("Entity", "Concept", "Task"),
+    "CITES": ("Entity", "Entity", "Paper")}   # 论文批次：本文 → 被引论文，选择性写入（extraction_principles.md §7）
+PAPER_RELS = {"CITES"}   # 论文批次能写的关系；其余关系仍只由种子写入
 SYMMETRIC = {"OVERLAPS_WITH"}   # 语义对称，不分方向
 FORM_ONLY = {"aliases"}         # 表单字段：注册为 NameKey，不写进对象
 

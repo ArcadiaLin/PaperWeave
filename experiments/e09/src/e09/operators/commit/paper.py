@@ -12,6 +12,7 @@
   若占用者是桩节点，提示改用 refs 或 fill；否则为 key-taken。
 - Experiment 按自然键 exp_key 判定新建、不变或冲突；Content 不原地修改。入库是报告级：只存实验与参与对象，
   数值留在原文（extraction_principles.md §4）。
+- CITES 按端点判定新建、不变或冲突；source_refs 为 <material_ref>::<定位>（graph_model_v2.md §1 关系来源）。
 
 dry_run 的查询经 `run` 执行：默认是只读会话；apply 在同一写事务里传入事务执行器做复核，
 `commit=False` 时整批写入后回滚（演练），库不留改动。语义查重调用 Resolve，走只读会话，看不到未提交的写入。
@@ -25,7 +26,7 @@ from ...config import NEO4J_DB
 from ...utils.graph import driver, q
 from ...utils.ids import IdAllocator
 from ...utils.namekey import NORMALIZER, name_key, normalize
-from ...utils.schema import FAMILY, NAMESPACES, PREFIX
+from ...utils.schema import FAMILY, NAMESPACES, PREFIX, REL_RULES
 from ..resolve import resolve
 
 KIND_OF_PREFIX = {p: k for k, p in PREFIX.items()}
@@ -53,6 +54,7 @@ class PaperPlan:
     registers: list = field(default_factory=list)     # (ref, 原字符串, kind)：新注册的精确键
     material: dict = field(default_factory=dict)      # {id, path, sha256, exists}
     experiments: list = field(default_factory=list)   # {exp, status: new | same}
+    rels: list = field(default_factory=list)          # {rel, status: new | same}
     errors: list = field(default_factory=list)
     pending: list = field(default_factory=list)
     conflicts: list = field(default_factory=list)
@@ -65,7 +67,7 @@ class PaperPlan:
     @property
     def empty(self) -> bool:
         return not (self.new_nodes or self.fills or self.registers or not self.material.get("exists", True)
-                    or any(e["status"] == "new" for e in self.experiments))
+                    or any(e["status"] == "new" for e in self.experiments + self.rels))
 
     def ids(self) -> dict:
         return dict(self.bind) | ({"paper": self.paper_id} if self.paper_id else {})
@@ -138,9 +140,8 @@ def dry_run(delta: dict, issues: list, run=q, semantic: bool = True) -> PaperPla
     p.material = _plan_material(delta["material"], run)
     for exp in delta["experiments"]:
         _plan_experiment(p, exp, ids, run)
-    if delta["rels"]:
-        p.errors.append({"where": "relationships", "rule": "unsupported",
-                         "msg": "论文批次的 Entity / Concept 关系写入尚未实现（单篇深度原则下通常为空）"})
+    for rel in delta["rels"]:
+        _plan_rel(p, rel, ids, run)
     return p
 
 
@@ -250,15 +251,20 @@ def experiment_props(exp: dict) -> dict:
                     "condition_basis": [f"{c}={loc}" for c, loc in sorted(exp["condition_basis"].items())] or None})
 
 
-def evaluates_props(x: dict) -> dict:
+def evaluates_props(x: dict, ids: dict) -> dict:
+    """origin_from 存被引论文的 id：判定同源时沿它找到被引论文的实验。"""
     return compact({"role": x["role"], "variants": x["variants"] or None, "origin": x["origin"],
-                    "origin_basis": x["origin_basis"], "origin_from": x["origin_from"]})
+                    "origin_basis": x["origin_basis"], "origin_from": ids[x["origin_from"]] if x["origin_from"] else None})
+
+
+def rel_props(rel: dict, material_id: str) -> dict:
+    return compact({"source_refs": [f"{material_id}::{loc}" for loc in rel["basis"]], "description": rel["description"]})
 
 
 def experiment_view(exp: dict, ids: dict) -> dict:
     """实验在库中应有的样子：属性、任务与三类参与边；dry_run 与库中现状逐项比较。"""
     return {"props": experiment_props(exp), "task": ids[exp["task"]],
-            "evaluates": sorted((ids[x["subject"]], tuple(sorted(evaluates_props(x).items(), key=str))) for x in exp["participants"]),
+            "evaluates": sorted((ids[x["subject"]], tuple(sorted(evaluates_props(x, ids).items(), key=str))) for x in exp["participants"]),
             "uses": sorted(ids[d] for d in exp["data"]), "measured_by": sorted(ids[m] for m in exp["metrics"])}
 
 
@@ -283,7 +289,8 @@ def _plan_experiment(p: PaperPlan, exp: dict, ids: dict, run):
     if stored is None:   # 新论文，或已有论文的新表
         p.experiments.append({"exp": exp, "status": "new"})
         return
-    refs = [x["subject"] for x in exp["participants"]] + exp["data"] + exp["metrics"] + [exp["task"]]
+    refs = [x["subject"] for x in exp["participants"]] + [x["origin_from"] for x in exp["participants"] if x["origin_from"]]
+    refs += exp["data"] + exp["metrics"] + [exp["task"]]
     if unbound := sorted({r for r in refs if r not in ids}):
         p.conflicts.append({"where": where, "rule": "experiment-objects",
                             "msg": f"实验已在库中，但其中的对象 {unbound} 是本批新建的"})
@@ -293,6 +300,21 @@ def _plan_experiment(p: PaperPlan, exp: dict, ids: dict, run):
         p.conflicts.append({"where": where, "rule": "experiment-changed", "msg": f"实验已在库中且 {diff} 不同"})
         return
     p.experiments.append({"exp": exp, "status": "same"})
+
+
+def _plan_rel(p: PaperPlan, rel: dict, ids: dict, run):
+    where = f"relationships.{rel['type']}→{rel['to']}"
+    a, b = ids.get(rel["from"]), ids.get(rel["to"])
+    if a is None or b is None:   # 端点是本批新建的对象，关系必然是新的
+        p.rels.append({"rel": rel, "status": "new"})
+        return
+    rows = run(f"MATCH (a {{id: $a}})-[r:{rel['type']}]->(b {{id: $b}}) RETURN properties(r) AS props", a=a, b=b)
+    if not rows:
+        p.rels.append({"rel": rel, "status": "new"})
+    elif len(rows) > 1 or rows[0]["props"] != rel_props(rel, p.material["id"]):
+        p.conflicts.append({"where": where, "rule": "rel-changed", "msg": f"{a} -[{rel['type']}]-> {b} 已在库中且依据或说明不同"})
+    else:
+        p.rels.append({"rel": rel, "status": "same"})
 
 
 # ── apply ──
@@ -354,7 +376,7 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
                   CREATE (e)-[:ON_TASK]->(t)""",
                paper=paper_id, task=ids[exp["task"]], props=props, mat=m["id"], loc=loc)
         edges = {
-            "EVALUATES": ("Entity|Concept", [{"id": ids[x["subject"]], "props": evaluates_props(x)} for x in exp["participants"]]),
+            "EVALUATES": ("Entity|Concept", [{"id": ids[x["subject"]], "props": evaluates_props(x, ids)} for x in exp["participants"]]),
             "USES": ("Entity", [{"id": ids[d], "props": {"role": "evaluation_data"}} for d in exp["data"]]),
             "MEASURED_BY": ("Concept", [{"id": ids[x], "props": {}} for x in exp["metrics"]]),
         }
@@ -364,6 +386,18 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
                            RETURN count(r) AS c""", e=eid, rows=rows).single()["c"]
             if c != len(rows):
                 raise RuntimeError(f"{exp['anchor']} 的 {rel}：{len(rows)} 条只写入 {c} 条（端点没匹配上）")
+
+    # 关系：本文 → 被引论文
+    for r in p.rels:
+        if r["status"] != "new":
+            continue
+        rel = r["rel"]
+        fa, fb, kb = REL_RULES[rel["type"]]
+        c = tx.run(f"""MATCH (a:{fa} {{id: $a}}), (b:{fb}:{kb} {{id: $b}})
+                       CREATE (a)-[r:{rel['type']}]->(b) SET r = $props RETURN count(r) AS c""",
+                   a=ids[rel["from"]], b=ids[rel["to"]], props=rel_props(rel, m["id"])).single()
+        if not c or c["c"] != 1:
+            raise RuntimeError(f"{rel['type']} {rel['from']} → {rel['to']} 未写入（端点没匹配上）")
 
     # 批次记录
     last = run("MATCH (b:IngestBatch) RETURN max(toInteger(substring(b.id, 6))) AS m")[0]["m"] or 0
@@ -377,7 +411,8 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                **{f"stat_{k}": v for k, v in p.stats.items()},
                "new_objects": len(p.new_nodes), "filled_objects": len(p.fills),
-               "new_experiments": sum(e["status"] == "new" for e in p.experiments)}))
+               "new_experiments": sum(e["status"] == "new" for e in p.experiments),
+               "new_rels": sum(r["status"] == "new" for r in p.rels)}))
     ids["_batch"] = bid
     return ids
 
@@ -420,6 +455,7 @@ def paper_summary(p: PaperPlan) -> str:
              f"论文    {'已在库中 ' + p.paper_id if p.paper_id else '新建'}",
              f"对象    新建 {len(p.new_nodes)} · 补全 {len(p.fills)} · 不变 {len(p.same_nodes)} · 新注册称呼 {len(p.registers)}",
              f"实验    {dict(Counter(e['status'] for e in p.experiments))}",
+             f"关系    {dict(Counter(r['status'] for r in p.rels))}",
              f"材料    {'已在库中' if p.material.get('exists') else '新建'} {p.material.get('id', '')}",
              f"解析    {dict(p.stats)}"]
     for label, items in (("错误", p.errors), ("待确认", p.pending), ("冲突", p.conflicts)):

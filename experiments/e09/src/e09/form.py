@@ -19,16 +19,18 @@ import yaml
 from .config import DATA
 from .utils.domain import DOMAINS, condition_form
 from .utils.namekey import name_key
-from .utils.schema import FAMILY, KINDS, NAMESPACES, PREFIX, REL_RULES, REQUIRED
+from .utils.schema import FAMILY, KINDS, NAMESPACES, PAPER_RELS, PREFIX, REQUIRED
 
 FORM_VERSION = "paper-form-v2"
 TOP_KEYS = {"form", "domain", "material", "paper", "refs", "objects", "relationships", "experiments"}
 EXP_KEYS = {"ref", "anchor", "section", "lines", "task", "text", "setting", "note",
             "conditions", "condition_basis", "participants", "data", "metrics"}
 PART_KEYS = {"subject", "role", "variants", "origin"}
+REL_KEYS = {"from", "type", "to", "basis", "description"}
 ROLES = {"target", "baseline"}
 ORIGINS = {"own", "rerun", "cited", "unstated"}
 LOCATOR = re.compile(r"(?P<section>.+)::(?P<start>\d+):(?P<end>\d+)")   # <章节>::<start>:<end>，行号从 1 起
+REFERENCES = re.compile(r"#+\s*(References|Bibliography)\s*", re.I)   # 参考文献节的标题
 EMPHASIS = re.compile(r"[*_$\\]")   # 核对称呼前去掉 Markdown 强调与公式记号：*DLinear*-S → DLinear-S
 KIND_OF_PREFIX = {p: k for k, p in PREFIX.items()}
 
@@ -42,6 +44,7 @@ class Compiler:
         self.raw, self.name = raw, name
         self.issues = []
         self.lines = []
+        self.kinds = {}   # ref -> kind，run 中填写
 
     def error(self, where, msg):
         self._add("error", where, msg)
@@ -56,16 +59,27 @@ class Compiler:
 
     # ── 共用检查 ──
 
-    def locator(self, where, loc) -> bool:
+    def locator(self, where, loc) -> tuple[int, int] | None:
         m = LOCATOR.fullmatch(loc) if isinstance(loc, str) else None
         if not m:
             self.error(where, f"定位 {loc!r} 应为 <章节>::<start>:<end>")
-            return False
+            return None
         start, end = int(m["start"]), int(m["end"])
         if not 1 <= start <= end <= len(self.lines):
             self.error(where, f"定位 {loc!r} 超出材料范围（共 {len(self.lines)} 行）")
-            return False
-        return True
+            return None
+        return start, end
+
+    def references_block(self) -> tuple[int, int] | None:
+        """参考文献节的行范围：从标题行到下一个同级或更高级标题之前。"""
+        for i, line in enumerate(self.lines):
+            if REFERENCES.fullmatch(line.strip()):
+                level = len(line) - len(line.lstrip("#"))
+                end = next((j for j in range(i + 1, len(self.lines))
+                            if self.lines[j].startswith("#") and len(self.lines[j]) - len(self.lines[j].lstrip("#")) <= level),
+                           len(self.lines))
+                return i + 1, end
+        return None
 
     def node(self, where, entry) -> dict | None:
         """paper 与新对象：Label、必填字段、桩节点规则、标识与精确键。"""
@@ -128,6 +142,8 @@ class Compiler:
             if "fill" in entry:
                 fills[ref] = self.fill(where, entry)
             elif n := self.node(where, entry):
+                if n["kind"] == "Paper" and not n["stub"]:
+                    self.error(where, "其他论文只建桩节点（单篇深度）：被引论文入库时再补全")
                 nodes[ref] = n
         key_owner = {}
         for ref, n in nodes.items():   # 批内两个对象注册同一精确键，逐条查库发现不了
@@ -136,15 +152,10 @@ class Compiler:
                     self.error(f"objects.{ref}", f"精确键 {k!r} 同时出现在 {key_owner[k]} 与 {ref}")
 
         bindable = set(refs) | set(nodes) | set(fills)
-        rels = []
-        for i, r in enumerate(raw.get("relationships") or []):
-            where = f"relationships[{i}]"
-            if r.get("type") not in REL_RULES:
-                self.error(where, f"关系类型 {r.get('type')!r} 不在 {sorted(REL_RULES)}")
-            elif not {r.get("from"), r.get("to")} <= bindable:
-                self.error(where, f"端点 {r.get('from')} / {r.get('to')} 不在 refs 或 objects 中")
-            else:
-                rels.append((r["from"], r["type"], r["to"]))
+        self.kinds = {r: spec.get("kind") for r, spec in refs.items()} | {r: n["kind"] for r, n in nodes.items()}
+        self.kinds |= {r: f["target"].get("kind") or KIND_OF_PREFIX.get(str(f["target"].get("id", "")).rpartition("_")[0])
+                       for r, f in fills.items()}
+        rels = [rel for i, r in enumerate(raw.get("relationships") or []) if (rel := self.relationship(f"relationships[{i}]", r))]
 
         # 每个 ref 在原文中可能的称呼：引用写的 mention / printed；新对象的 name 与 aliases
         names = {r: [spec.get("mention") or spec.get("printed")] for r, spec in refs.items()}
@@ -154,9 +165,40 @@ class Compiler:
         anchors = [e["anchor"] for e in experiments if e]
         if len(anchors) != len(set(anchors)):
             self.error("experiments", f"主锚点重复 {anchors}")
+        # 必写档：实验转引了哪篇论文的结果，本文就必须 CITES 它
+        cited = {x["origin_from"] for e in experiments if e for x in e["participants"] if x["origin"] == "cited"}
+        for f in sorted(cited - {r["to"] for r in rels if r["type"] == "CITES"} - {None}):
+            self.error("relationships", f"实验转引了 {f} 的结果，必须写 CITES paper → {f}（extraction_principles.md §7）")
         return {"name": self.name, "form": FORM_VERSION, "domain": domain, "material": material,
                 "nodes": nodes, "refs": refs, "fills": fills, "rels": rels,
                 "experiments": [e for e in experiments if e], "coverage": anchors}
+
+    def relationship(self, where, r: dict) -> dict | None:
+        """论文表单中的关系：只有本文 → 被引论文的 CITES，选择性写入，须有引用上下文。"""
+        if extra := set(r) - REL_KEYS:
+            self.error(where, f"未知字段 {sorted(extra)}")
+        if r.get("type") not in PAPER_RELS:
+            self.error(where, f"论文表单只能写 {sorted(PAPER_RELS)}，实际是 {r.get('type')!r}；方法间关系不在单篇抽取中包办")
+            return None
+        ok = True
+        if r.get("from") != "paper":
+            self.error(where, "CITES 的起点只能是本文 paper")
+            ok = False
+        if self.kinds.get(r.get("to")) != "Paper":
+            self.error(where, f"终点 {r.get('to')!r} 应为 refs 或 objects 中的 Paper")
+            ok = False
+        basis = r.get("basis")
+        if not isinstance(basis, list) or not basis:
+            self.error(where, "须给出依据 basis：定位列表，至少含一处引用上下文")
+            return None
+        spans = [span for loc in basis if (span := self.locator(where, loc))]
+        refs_block = self.references_block()
+        if len(spans) == len(basis) and refs_block and all(refs_block[0] <= a and b <= refs_block[1] for a, b in spans):
+            self.error(where, "basis 只有参考文献条目：至少要有一处正文中的引用上下文")
+        if r.get("description") is not None and not isinstance(r["description"], str):
+            self.error(where, "description 应为文本")
+        return {"from": "paper", "type": r["type"], "to": r["to"], "basis": basis,
+                "description": r.get("description")} if ok else None
 
     def material(self, m: dict) -> dict:
         path = DATA / str(m.get("path", ""))
@@ -267,6 +309,10 @@ class Compiler:
                     self.locator(w, origin["basis"])
                 if origin["kind"] == "cited" and not origin.get("from"):
                     self.error(w, "origin=cited 必须写明转引出处 from")
+                elif origin["kind"] == "cited" and self.kinds.get(origin["from"]) != "Paper":
+                    self.error(w, f"转引出处 from={origin['from']!r} 应为 refs 或 objects 中的 Paper（被引论文可建桩节点）")
+            if origin.get("from") and origin.get("kind") != "cited":
+                self.error(w, "from 只用于 origin=cited")
             for labels in [[v] for v in variants] or [names.get(subj)]:
                 printed(w, labels)
             participants.append({"subject": subj, "role": part.get("role"), "variants": variants,

@@ -6,7 +6,7 @@
 form: paper-form-v2
 domain: ltsf
 material: {path: papers/2023-PatchTST/paper.md, sha256: d29e296b18e44b771c88f5ca33dcb72f59a68efd52d173125efea3ea2bd21646}
-x-ingest: {committed_by: claude, rounds: 2}   # 第 1 轮 dry_run 返回 5 个对象的语义近邻待判定；全部否定后第 2 轮无阻塞
+x-ingest: {committed_by: claude, rounds: 2}   # 第 1 轮：两个论文桩节点的词面近邻待判定，DLinear 论文按标题未命中（大小写不同）；确认后第 2 轮无阻塞
 
 paper:
   labels: [Entity, Paper]
@@ -36,6 +36,7 @@ refs:
   informer:   {mention: Informer, kind: Method}
   pyraformer: {mention: Pyraformer, kind: Method}
   logtrans:   {mention: LogTrans, kind: Method}
+  dlinear_paper: {id: paper_0001, printed: "Are transformers effective for time series forecasting?"}   # 参考文献给出 arXiv:2205.13504，与 paper_0001 的标识一致；标题大小写不同，不注册
 
 objects:
   patchtst:
@@ -68,6 +69,17 @@ objects:
     stub: true
     properties: {name: TS-TCC, note: "Cited as Eldele et al. (2021), Time-series representation learning via temporal and contextual contrasting."}
     rejected: [method_0004, method_0024, method_0002, method_0003, method_0016]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  # 被引论文：桩节点，只建本文转引了结果的论文
+  btsf_paper:
+    labels: [Entity, Paper]
+    stub: true
+    properties: {name: "Unsupervised time-series representation learning with iterative bilinear temporal-spectral fusion", note: "Cited as Yang & Hong (2022). Ling Yang and Shenda Hong. In ICML, 2022."}
+    rejected: [paper_0001, paper_0003, paper_0002]   # 名称词面近邻，判定均不是同一篇论文
+  ts2vec_paper:
+    labels: [Entity, Paper]
+    stub: true
+    properties: {name: "Ts2vec: Towards universal representation of time series", note: "Cited as Yue et al. (2022). Zhihan Yue, Yujing Wang, Juanyong Duan, Tianmeng Yang, Congrui Huang, Yunhai Tong, and Bixiong Xu. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 36, 2022."}
+    rejected: [paper_0001, paper_0003, paper_0002]   # 名称词面近邻，判定均不是同一篇论文
   # 表 1 的训练时间：通用概念
   training_time:
     labels: [Concept, Metric]
@@ -79,7 +91,25 @@ objects:
         epochs and implementation.
     rejected: [metric_0013, metric_0014, metric_0011, metric_0012, metric_0001]   # dry_run 第 1 轮的近邻，判定均不是同一对象
 
-relationships: []   # 方法间关系不在单篇抽取中包办
+# 只写本文到被引论文的 CITES，选择性写入：这里都是转引了结果的必写档；方法间关系不在单篇抽取中包办
+relationships:
+  - from: paper
+    type: CITES
+    to: dlinear_paper
+    basis: ["References::488:491", "4.1 Long-term Time series forecasting::128:128", "A.3 Univariate Forecasting::567:567", "A.7.2 Performance of Channel-independence on Other Models::900:900"]
+    description: >
+      Results of DLinear, Pyraformer and LogTrans in Table 3, all baselines in Table 8, and the
+      non-CI baselines in Table 15 are collected from this paper.
+  - from: paper
+    type: CITES
+    to: ts2vec_paper
+    basis: ["References::482:486", "4.2 Representation learning::212:212"]
+    description: TS2Vec results in Table 6 are cited from this paper.
+  - from: paper
+    type: CITES
+    to: btsf_paper
+    basis: ["References::477:481", "4.2 Representation learning::212:212"]
+    description: BTSF, TNC and TS-TCC results in Table 6 are cited from this paper.
 
 x-split-128: &split128 {split: "4.1 Long-term Time series forecasting::128:128"}   # "following the same experimental setup ... as in the original papers"
 x-inferred: &inferred "Split convention inferred from the experimental setup stated in Section 4.1 (line 128)."
@@ -141,12 +171,12 @@ experiments:
       and the ETT rows match.
     participants:
       - {subject: patchtst,   role: target,   variants: [PatchTST/64, PatchTST/42], origin: own}
-      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: dlinear_paper}}
       - {subject: fedformer,  role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
       - {subject: autoformer, role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
       - {subject: informer,   role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
-      - {subject: pyraformer, role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: pyraformer, role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: dlinear_paper}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "4.1 Long-term Time series forecasting::128:128", from: dlinear_paper}}
     data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
     metrics: [mse, mae]
     conditions: {split: "convention:ltsf-autoformer"}
@@ -229,10 +259,10 @@ experiments:
       split is not stated, so no split convention is recorded.
     participants:
       - {subject: patchtst, role: target,   variants: [Transferred, Self-supervised], origin: own}
-      - {subject: btsf,     role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
-      - {subject: ts2vec,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yue et al., 2022 (TS2Vec) [bib.bib38]"}}
-      - {subject: tnc,      role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
-      - {subject: ts_tcc,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: "Yang & Hong, 2022 (BTSF) [bib.bib37]"}}
+      - {subject: btsf,     role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: btsf_paper}}
+      - {subject: ts2vec,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: ts2vec_paper}}
+      - {subject: tnc,      role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: btsf_paper}}
+      - {subject: ts_tcc,   role: baseline, origin: {kind: cited, basis: "4.2 Representation learning::212:212", from: btsf_paper}}
     data: [etth1]
     metrics: [mse, mae]
     conditions: {split: null}
@@ -283,11 +313,11 @@ experiments:
       0.629 here but 0.628 there.
     participants:
       - {subject: patchtst,   role: target,   variants: [PatchTST/64, PatchTST/42], origin: own}
-      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: dlinear,    role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: dlinear_paper}}
+      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: dlinear_paper}}
+      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: dlinear_paper}}
+      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: dlinear_paper}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "A.3 Univariate Forecasting::567:567", from: dlinear_paper}}
     data: [etth1, etth2, ettm1, ettm2]
     metrics: [mse, mae]
     conditions: {split: "convention:ltsf-autoformer"}
@@ -451,9 +481,9 @@ experiments:
       paper's Table 3.
     participants:
       - {subject: patchtst,   role: target,   variants: [PatchTST/42], origin: own}
-      - {subject: informer,   role: baseline, variants: [Informer, Informer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: autoformer, role: baseline, variants: [Autoformer, Autoformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
-      - {subject: fedformer,  role: baseline, variants: [FEDformer, FEDformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: "Zeng et al., 2022 (DLinear) [bib.bib39]"}}
+      - {subject: informer,   role: baseline, variants: [Informer, Informer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: dlinear_paper}}
+      - {subject: autoformer, role: baseline, variants: [Autoformer, Autoformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: dlinear_paper}}
+      - {subject: fedformer,  role: baseline, variants: [FEDformer, FEDformer-CI], origin: {kind: cited, basis: "A.7.2 Performance of Channel-independence on Other Models::900:900", from: dlinear_paper}}
     data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
     metrics: [mse, mae]
     conditions: {split: "convention:ltsf-autoformer"}

@@ -6,7 +6,7 @@
 form: paper-form-v2
 domain: ltsf
 material: {path: papers/2023-DLinear/paper.md, sha256: 1ec346c934e6ebac616e861bd0fa46fcb56157bd0a8ed7190be29dffa3ee1065}
-x-ingest: {committed_by: claude, rounds: 2}   # 第 1 轮 dry_run 返回 7 个对象的语义近邻待判定；全部否定后第 2 轮无阻塞
+x-ingest: {committed_by: claude, rounds: 2}   # 否定判定沿用上一版表单（b459504）第 1 轮的结果；本版另有一次因向量服务瞬时故障重跑，不计入
 
 paper:
   labels: [Entity, Paper]
@@ -91,6 +91,17 @@ objects:
     stub: true
     properties: {name: Transformer, note: "The vanilla Transformer, cited as [25] Vaswani et al., Attention is all you need. NeurIPS 2017."}
     rejected: [method_0004]   # dry_run 第 1 轮的近邻，判定均不是同一对象
+  # 被引论文：桩节点（单篇深度），只建本文转引了结果或沿用了实验设置的论文（extraction_principles.md §7）
+  fedformer_paper:
+    labels: [Entity, Paper]
+    stub: true
+    properties: {name: "Fedformer: Frequency enhanced decomposed transformer for long-term series forecasting", note: "Cited as [29] Tian Zhou, Ziqing Ma, Qingsong Wen, Xue Wang, Liang Sun, and Rong Jin. In International Conference on Machine Learning, 2022."}
+    rejected: []
+  autoformer_paper:
+    labels: [Entity, Paper]
+    stub: true
+    properties: {name: "Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting", note: "Cited as [27] Jiehui Xu, Jianmin Wang, Mingsheng Long, et al. Advances in Neural Information Processing Systems, 34, 2021."}
+    rejected: []
   # 表 8 的效率指标：通用概念，定义不依赖本文
   macs:
     labels: [Concept, Metric]
@@ -130,7 +141,23 @@ objects:
         implementation.
     rejected: [metric_0005, metric_0002, metric_0004, metric_0010, metric_0001]   # dry_run 第 1 轮的近邻，判定均不是同一对象
 
-relationships: []   # 方法间关系不在单篇抽取中包办
+# 只写本文到被引论文的 CITES，选择性写入：转引了结果的必写，沿用实验设置等对实验有实际作用的可写；
+# 方法间关系不在单篇抽取中包办
+relationships:
+  - from: paper
+    type: CITES
+    to: fedformer_paper
+    basis: ["References::651:655", "5.1 Experimental Settings::172:172", "5.1 Experimental Settings::196:196"]
+    description: >
+      Results of FEDformer, Autoformer, Informer, LogTrans and Reformer in Tables 2 and 3 are
+      taken from this paper.
+  - from: paper
+    type: CITES
+    to: autoformer_paper
+    basis: ["References::638:642", "5.2 Comparison of Multivariate Forecasting with Transformers::203:203", "A.2 Implementation Details::461:461"]
+    description: >
+      The experimental setting of Tables 2 and 3 follows this paper (together with [28] and [29]);
+      the Autoformer, Informer and vanilla Transformer implementations are taken from its code.
 
 x-split-203: &split203 {split: "5.2 Comparison of Multivariate Forecasting with Transformers::203:203"}   # "following the experimental setting of previous work [27, 29, 28]"
 
@@ -158,12 +185,12 @@ experiments:
       four non-ILI datasets and L=36 for ILI.
     participants:
       - {subject: dlinear,    role: target,   variants: [DLinear-S, DLinear-I], origin: own}
-      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: "Zhou et al., 2022 (FEDformer) [29]"}}
+      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: fedformer_paper}}
+      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: fedformer_paper}}
+      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: fedformer_paper}}
       - {subject: pyraformer, role: baseline, origin: {kind: rerun, basis: "5.1 Experimental Settings::172:172"}}
-      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: reformer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: "Zhou et al., 2022 (FEDformer) [29]"}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: fedformer_paper}}
+      - {subject: reformer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::172:172", from: fedformer_paper}}
       - {subject: repeat_c,   role: baseline, origin: {kind: rerun, basis: "5.1 Experimental Settings::172:172"}}
     data: [elec, exch_rate, traffic, weather, ili]
     metrics: [mse, mae]
@@ -187,12 +214,12 @@ experiments:
       FEDformer MAE on ETTh2 at T=720 is printed as "0474" (decimal point missing, presumably 0.474).
     participants:
       - {subject: dlinear,    role: target,   variants: [DLinear-S], origin: own}
-      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: "Zhou et al., 2022 (FEDformer) [29]"}}
+      - {subject: fedformer,  role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: fedformer_paper}}
+      - {subject: autoformer, role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: fedformer_paper}}
+      - {subject: informer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: fedformer_paper}}
       - {subject: pyraformer, role: baseline, origin: {kind: rerun, basis: "5.1 Experimental Settings::196:196"}}
-      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: "Zhou et al., 2022 (FEDformer) [29]"}}
-      - {subject: reformer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: "Zhou et al., 2022 (FEDformer) [29]"}}
+      - {subject: logtrans,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: fedformer_paper}}
+      - {subject: reformer,   role: baseline, origin: {kind: cited, basis: "5.1 Experimental Settings::196:196", from: fedformer_paper}}
     data: [etth1, etth2, ettm1, ettm2]
     metrics: [mse, mae]
     conditions: {split: "convention:ltsf-autoformer"}
