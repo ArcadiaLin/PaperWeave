@@ -5,21 +5,30 @@
 This repository supports an ongoing research project. The tentative publication
 target remains **SIGMOD**.
 
-The current research direction (updated 2026-09-29) is:
+The current research direction (updated 2026-10-04) is:
 
-> **Data-management middleware for persistent paper-derived knowledge in
-> CS research workflows (tentative).**
+> **Data-management middleware for persistent paper-derived knowledge and
+> its use artifacts in CS research workflows (tentative).**
 
 The current core question is:
 
 > **How can a semantic data model and composable operators support the
 > representation, querying, composition, and maintenance of accumulated
-> paper-derived knowledge for external agents in bounded CS research workloads?**
+> paper-derived knowledge and its use artifacts for external agents in bounded
+> CS research workloads?**
 
 The motivating application remains domain-specific Agent Memory. Papers and
 associated materials are sources; the managed objects are accumulated knowledge,
-interpretations, semantic relationships, and their evidence. The research focus
-is the middleware's data-management mechanisms and support for downstream work.
+interpretations, semantic relationships, their evidence, and the artifacts
+produced when agents use this knowledge. The agreed narrative refines the
+original focus on reusing paper-reading experience: agents continually produce
+extracted records, comparative judgments, and syntheses, which must be managed
+together with their subjects, conditions, source materials, and prior inputs.
+Subsequent tasks should be able to discover, inspect, and compose earlier work
+and contribute new artifacts as materials and requirements evolve. The research
+focus is the middleware's data-management mechanisms and support for downstream
+work; this does not establish general strategy learning or autonomous scientific
+improvement.
 "Paper understanding" refers to interpretations produced by external agents
 during reading and extraction; it does not promise autonomous scientific
 reasoning or inference of contradictions by the database.
@@ -35,8 +44,25 @@ External agents interpret tasks and materials, make semantic judgments, and
 submit explicit operations or plans. The middleware manages and executes those
 operations without internal LLM reasoning about identity, claim relations, or
 research conclusions. Retrieving a stored judgment is distinct from producing
-one. The placement of embedding computation remains an open implementation
-boundary.
+one. Agent operator contracts describe the inputs and outputs of extraction,
+judgment, and synthesis: external agents supply semantic content, and the
+middleware validates declared structure and references and persists artifacts.
+Deterministic organization, such as sorting and pivoting existing records, can
+be executed by the middleware. The placement of embedding computation remains
+an open implementation boundary.
+
+Use database provenance and persistent derived data to explain this design.
+Semantic objects provide discovery and interpretation anchors; source and
+derivation lineage connects materials, knowledge records, and use artifacts.
+The current Artifact design records declared input dependencies, operation
+parameters, and formation information. It does not capture a complete reasoning
+trace or establish that a judgment is true. Explicitly adopting an artifact's
+content as an Observation is also distinct from independent verification.
+Source-material change is already considered through fixed material references,
+content hashes, and dependency-based possible-staleness indications. These
+mechanisms support re-examination; they do not imply automatic incremental view
+maintenance or semantic reassessment. Agent operators and Artifact persistence
+remain design contracts awaiting implementation and evaluation.
 
 The technical direction is to give the data model and operators explicit
 database semantics: types, identity and provenance rules, constraints, input and
