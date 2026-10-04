@@ -37,8 +37,6 @@ def check_seed(raw: dict, name: str) -> dict:
         assert kind in SEED_KINDS.get(family, ()), f"{name}: {ref} 的 {n['labels']} 不在种子范围 {SEED_KINDS}"
         assert "id" not in props, f"{name}: {ref} 不应自带 id，id 由入库分配"
         assert props.get("name") and props.get(REQUIRED[family]), f"{name}: {ref} 缺 name 或 {REQUIRED[family]}"
-        if kind == "Metric":
-            assert props.get("direction") in ("lower", "higher"), f"{name}: {ref} 的 direction 应为 lower / higher"
         bad = [k for k, v in props.items() if not scalar_or_list(v)]
         assert not bad, f"{name}: {ref} 的属性 {bad} 不是标量或标量列表"
         for i in props.get("identifiers", []):

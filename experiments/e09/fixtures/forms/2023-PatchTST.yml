@@ -1,9 +1,8 @@
-# 入库表单夹具 paper-form-v2（报告级）：编译与 Commit 的检验用例，各只录一张表，不是正式入库表单。
-# 报告级只记录实验在哪张表、比了谁、在哪些数据集与指标上、实验级条件；数值留在原文，比较时按锚点读取。
+# 入库表单夹具 paper-form-v4：编译与 Commit 的检验用例，只录一组实验、一条主张与一条贡献，不是正式入库表单。
+# 实验按研究问题分组，只存描述、锚点与参与关系；数值、条件与变体留在原文，按锚点读取。
 # 写法见 docs/designs/v2/extraction_principles.md 与 commit_contract.md。
 
-form: paper-form-v2
-domain: ltsf
+form: paper-form-v4
 material: {path: papers/2023-PatchTST/paper.md, sha256: d29e296b18e44b771c88f5ca33dcb72f59a68efd52d173125efea3ea2bd21646}
 
 paper:
@@ -25,9 +24,7 @@ refs:
   etth2:     {mention: ETTh2, kind: Dataset}
   ettm1:     {mention: ETTm1, kind: Dataset}
   ettm2:     {mention: ETTm2, kind: Dataset}
-  mse:       {mention: MSE, kind: Metric}
-  mae:       {mention: MAE, kind: Metric}
-  dlinear:   {mention: DLinear, kind: Method}       # 原文只写 DLinear，不注明变体
+  dlinear:   {mention: DLinear, kind: Method}
   fedformer: {mention: FEDformer, kind: Method}
   autoformer: {mention: Autoformer, kind: Method}
 
@@ -60,30 +57,39 @@ objects:
 relationships: []   # 方法间关系不在单篇抽取中包办
 
 experiments:
-  - ref: x_t3
-    anchor: S4.T3
-    section: "4.1 Long-term Time series forecasting"
-    lines: [134, 169]
+  - anchors: [S4.T3]
+    locators: ["4.1 Long-term Time series forecasting::128:169"]
     task: ltsf
     text: >
-      Multivariate long-term forecasting on eight benchmarks with supervised PatchTST/64 and
-      PatchTST/42 against DLinear and Transformer-based baselines.
-    setting: >
-      Multivariate, supervised training; MSE and MAE, lower is better. Horizon T in {24, 36, 48, 60}
-      for ILI and {96, 192, 336, 720} for the others. Variant labels as printed: PatchTST/64 uses
-      64 input patches (L=512), PatchTST/42 uses 42 patches (L=336); both use patch length 16 and
-      stride 8. DLinear uses L=336 (L=104 on ILI). FEDformer, Autoformer and Informer were re-run
-      with six look-back windows and the best result per task is reported. PatchTST's own look-back
-      window on ILI is not stated.
+      Compares supervised PatchTST in two look-back configurations against DLinear and
+      Transformer-based baselines on eight multivariate long-term forecasting datasets. Some
+      Transformer baselines are re-run with several look-back windows and their best results are
+      reported. The paper claims PatchTST outperforms all baselines overall.
     participants:
-      - {subject: patchtst,   role: target,   variants: [PatchTST/64, PatchTST/42], origin: own}
-      - {subject: dlinear,    role: baseline, origin: unstated}
-      - {subject: fedformer,  role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
-      - {subject: autoformer, role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
-      - {subject: informer,   role: baseline, origin: {kind: rerun, basis: "A.1.2 Details of Baseline Settings::535:535"}}
-      - {subject: pyraformer, role: baseline, origin: unstated}
-      - {subject: logtrans,   role: baseline, origin: unstated}
+      - {subject: patchtst,   role: target}
+      - {subject: dlinear,    role: baseline}
+      - {subject: fedformer,  role: baseline}
+      - {subject: autoformer, role: baseline}
+      - {subject: informer,   role: baseline}
+      - {subject: pyraformer, role: baseline}
+      - {subject: logtrans,   role: baseline}
     data: [weather, traffic, elec, ili, etth1, etth2, ettm1, ettm2]
-    metrics: [mse, mae]
-    conditions: {split: "convention:ltsf-autoformer"}
-    condition_basis: {split: "4.1 Long-term Time series forecasting::128:128"}   # "following the same experimental setup ... as in the original papers"
+
+claims:
+  - key: beats-baselines
+    text: >
+      The paper claims that supervised PatchTST outperforms all baseline methods on multivariate
+      long-term forecasting, with large overall reductions in error relative to the best
+      Transformer-based models.
+    locators: ["4.1 Long-term Time series forecasting::132:132"]
+    about: [patchtst, ltsf]
+    supported_by: [S4.T3]
+
+contributions:
+  - key: patching-ci
+    text: >
+      The paper contributes PatchTST, whose two key designs are segmenting each channel into
+      subseries-level patches as input tokens and channel-independent processing with shared
+      weights.
+    locators: ["1 Introduction::21:24"]
+    about: [patchtst]

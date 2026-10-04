@@ -1,9 +1,12 @@
-"""论文表单编译：表单 → delta（docs/designs/v2/commit_contract.md §1、§4）。
+"""论文表单编译：表单 → delta（docs/designs/v2/commit_contract.md §1、§2.1、§4）。
 
-compile 不查库，只看表单、材料文件与领域配置；同一表单与材料必得同一结果。问题分两级：
-- error：表单自身写错（结构、条件语法、锚点或依据定位不在材料中……），由 Agent 改表单；
-- pending：需要 Agent 确认（表单写的称呼在原文表格范围内找不到）。
-入库是报告级：只存实验在哪张表、比了谁、在哪些数据集与指标上、实验级条件；数值留在原文，比较时按锚点读取。
+compile 不查库，只看表单与材料文件；同一表单与材料必得同一结果。问题分两级：
+- error：表单自身写错（结构、锚点或定位不在材料中……），由 Agent 改表单；
+- pending：需要 Agent 确认（称呼在实验的行范围内找不到、实验描述里出现数值）。
+  Agent 判断无误时在顶层 `x-confirmed: [{rule, where}]` 中列出，该项降为 confirmed，不再阻塞，照样记入批次记录。
+每个问题带稳定的规则码 rule，Agent 按它决定怎么改。
+入库只到实验级：实验按研究问题分组，存描述、锚点与参与关系；主张与自述贡献同样只存描述、锚点与关联。
+数值、条件与变体留在原文，按锚点读取（extraction_principles.md §4、§9）。
 引用解析、查重、冲突与幂等在 Commit 的 dry_run 中判定，不在这里。
 
     uv run python -m e09.form <表单.yml> ...    # 打印编译摘要与问题；有 error 时返回非零
@@ -17,26 +20,31 @@ from pathlib import Path
 import yaml
 
 from .config import DATA
-from .utils.domain import DOMAINS, condition_form
 from .utils.namekey import name_key
 from .utils.schema import FAMILY, KINDS, NAMESPACES, PAPER_RELS, PREFIX, REQUIRED
 
-FORM_VERSION = "paper-form-v2"
-TOP_KEYS = {"form", "domain", "material", "paper", "refs", "objects", "relationships", "experiments"}
-EXP_KEYS = {"ref", "anchor", "section", "lines", "task", "text", "setting", "note",
-            "conditions", "condition_basis", "participants", "data", "metrics"}
-PART_KEYS = {"subject", "role", "variants", "origin"}
+FORM_VERSION = "paper-form-v4"
+TOP_KEYS = {"form", "material", "paper", "refs", "objects", "relationships", "experiments", "claims", "contributions"}
+EXP_KEYS = {"anchors", "locators", "task", "text", "participants", "data", "benchmark"}
+PART_KEYS = {"subject", "role"}
+CONTENT_KEYS = {"Claim": {"key", "text", "locators", "about", "supported_by"},
+                "Contribution": {"key", "text", "locators", "about"}}
 REL_KEYS = {"from", "type", "to", "basis", "description"}
 ROLES = {"target", "baseline"}
-ORIGINS = {"own", "rerun", "cited", "unstated"}
 LOCATOR = re.compile(r"(?P<section>.+)::(?P<start>\d+):(?P<end>\d+)")   # <章节>::<start>:<end>，行号从 1 起
 REFERENCES = re.compile(r"#+\s*(References|Bibliography)\s*", re.I)   # 参考文献节的标题
 EMPHASIS = re.compile(r"[*_$\\]")   # 核对称呼前去掉 Markdown 强调与公式记号：*DLinear*-S → DLinear-S
+DECIMAL = re.compile(r"\d+\.\d+")   # 实验描述不转录数值（extraction_principles.md §4）
 KIND_OF_PREFIX = {p: k for k, p in PREFIX.items()}
+CONFIRMABLE = {"name-not-in-range", "decimal-in-text"}   # 只能由 Agent 表态消除的待确认项
 
 
 def scalar_or_list(v) -> bool:
     return isinstance(v, (str, int, float, bool)) or (isinstance(v, list) and all(isinstance(x, (str, int, float, bool)) for x in v))
+
+
+def str_list(v) -> bool:
+    return isinstance(v, list) and all(isinstance(x, str) and x for x in v)
 
 
 class Compiler:
@@ -46,15 +54,15 @@ class Compiler:
         self.lines = []
         self.kinds = {}   # ref -> kind，run 中填写
 
-    def error(self, where, msg):
-        self._add("error", where, msg)
+    def error(self, where, msg, rule="form"):
+        self._add("error", where, msg, rule)
 
-    def pending(self, where, msg):
-        self._add("pending", where, msg)
+    def pending(self, where, msg, rule):
+        self._add("pending", where, msg, rule)
 
-    def _add(self, level, where, msg):
-        issue = {"level": level, "where": where, "msg": msg}
-        if issue not in self.issues:   # 同一问题在多个格上出现时只报一次
+    def _add(self, level, where, msg, rule):
+        issue = {"level": level, "rule": rule, "where": where, "msg": msg}
+        if issue not in self.issues:   # 同一问题在多处出现时只报一次
             self.issues.append(issue)
 
     # ── 共用检查 ──
@@ -70,6 +78,17 @@ class Compiler:
             return None
         return start, end
 
+    def locators(self, where, locs) -> list[tuple[int, int]]:
+        """非空定位列表；返回有效的行范围。"""
+        if not str_list(locs) or not locs:
+            self.error(where, "locators 应为非空的定位列表")
+            return []
+        return [span for loc in locs if (span := self.locator(where, loc))]
+
+    def anchor_line(self, anchor) -> int | None:
+        """锚点所在行（从 1 起）；材料中没有时返回 None。"""
+        return next((i + 1 for i, line in enumerate(self.lines) if f'id="{anchor}"' in line), None)
+
     def references_block(self) -> tuple[int, int] | None:
         """参考文献节的行范围：从标题行到下一个同级或更高级标题之前。"""
         for i, line in enumerate(self.lines):
@@ -80,6 +99,10 @@ class Compiler:
                            len(self.lines))
                 return i + 1, end
         return None
+
+    def text_in(self, spans) -> str:
+        """行范围内的原文，去掉 Markdown 强调与公式记号，供称呼核对。"""
+        return EMPHASIS.sub("", "\n".join("\n".join(self.lines[a - 1:b]) for a, b in spans)).lower()
 
     def node(self, where, entry) -> dict | None:
         """paper 与新对象：Label、必填字段、桩节点规则、标识与精确键。"""
@@ -101,10 +124,7 @@ class Compiler:
             self.error(where, f"不是桩节点，缺 {required}")
         if bad := [k for k, v in props.items() if not scalar_or_list(v)]:
             self.error(where, f"属性 {bad} 不是标量或标量列表")
-        for i in props.get("identifiers", []):
-            ns, sep, value = i.partition(":")
-            if not (sep and value and ns in NAMESPACES):
-                self.error(where, f"标识 {i!r} 不是已声明命名空间的 <namespace>:<value>")
+        self.identifiers(where, props)
         keys = {}
         for s in [props["name"], *props.get("aliases", [])]:
             keys.setdefault(name_key(s, kind), s)
@@ -114,6 +134,12 @@ class Compiler:
         return {"labels": labels, "family": family, "kind": kind, "stub": stub, "keys": keys, "rejected": rejected,
                 "props": {k: v for k, v in props.items() if k != "aliases"}}
 
+    def identifiers(self, where, props):
+        for i in props.get("identifiers", []):
+            ns, sep, value = i.partition(":")
+            if not (sep and value and ns in NAMESPACES):
+                self.error(where, f"标识 {i!r} 不是已声明命名空间的 <namespace>:<value>")
+
     # ── 编译 ──
 
     def run(self) -> dict:
@@ -122,14 +148,13 @@ class Compiler:
             self.error("form", f"表单版本应为 {FORM_VERSION}，实际是 {raw.get('form')!r}")
         if extra := {k for k in raw if not k.startswith("x-")} - TOP_KEYS:
             self.error("表单", f"未知字段 {sorted(extra)}")
-        domain = raw.get("domain")
-        if domain not in DOMAINS:
-            self.error("domain", f"未知领域 {domain!r}，已声明 {sorted(DOMAINS)}")
-            return {}
 
         material = self.material(raw.get("material") or {})
         nodes, refs, fills = {}, {}, {}
-        if paper := self.node("paper", raw.get("paper") or {}):
+        paper_entry = raw.get("paper") or {}
+        if "fill" in paper_entry:   # 本文已有桩节点：dry_run 列出相似节点后，经确认补全它（commit_contract.md §2.1）
+            fills["paper"] = self.paper_fill(paper_entry)
+        elif paper := self.node("paper", paper_entry):
             if paper["kind"] != "Paper":
                 self.error("paper", "paper 的 kind 应为 Paper")
             nodes["paper"] = paper
@@ -161,17 +186,36 @@ class Compiler:
         names = {r: [spec.get("mention") or spec.get("printed")] for r, spec in refs.items()}
         names |= {r: list(n["keys"].values()) for r, n in nodes.items()}
         names |= {r: [f["target"].get("mention")] for r, f in fills.items()}
-        experiments = [self.experiment(exp, domain, names, bindable) for exp in raw.get("experiments") or []]
-        anchors = [e["anchor"] for e in experiments if e]
-        if len(anchors) != len(set(anchors)):
-            self.error("experiments", f"主锚点重复 {anchors}")
-        # 必写档：实验转引了哪篇论文的结果，本文就必须 CITES 它
-        cited = {x["origin_from"] for e in experiments if e for x in e["participants"] if x["origin"] == "cited"}
-        for f in sorted(cited - {r["to"] for r in rels if r["type"] == "CITES"} - {None}):
-            self.error("relationships", f"实验转引了 {f} 的结果，必须写 CITES paper → {f}（extraction_principles.md §8）")
-        return {"name": self.name, "form": FORM_VERSION, "domain": domain, "material": material,
+        experiments = [e for i, exp in enumerate(raw.get("experiments") or [])
+                       if (e := self.experiment(f"experiments[{i}]", exp, names, bindable))]
+        primary = [e["anchors"][0] for e in experiments]
+        if dup := sorted({a for a in primary if primary.count(a) > 1}):
+            self.error("experiments", f"主锚点重复 {dup}")
+        contents = [c for kind, field_ in (("Claim", "claims"), ("Contribution", "contributions"))
+                    for c in self.contents(kind, field_, raw.get(field_) or [], bindable, set(primary))]
+        coverage = list(dict.fromkeys(a for e in experiments for a in e["anchors"]))
+        confirmed = self.confirm(raw.get("x-confirmed") or [])
+        return {"name": self.name, "form": FORM_VERSION, "material": material,
                 "nodes": nodes, "refs": refs, "fills": fills, "rels": rels,
-                "experiments": [e for e in experiments if e], "coverage": anchors}
+                "experiments": experiments, "contents": contents, "coverage": coverage, "confirmed": confirmed}
+
+    def confirm(self, items) -> list[dict]:
+        """x-confirmed：Agent 对可表态的待确认项逐条确认；列出的项必须正好对应一条待确认项。"""
+        if not isinstance(items, list) or not all(isinstance(x, dict) and set(x) == {"rule", "where"} for x in items):
+            self.error("x-confirmed", "应为 [{rule, where}] 列表", rule="confirm-format")
+            return []
+        out = []
+        for x in items:
+            if x["rule"] not in CONFIRMABLE:
+                self.error("x-confirmed", f"{x['rule']!r} 不能靠确认消除，只能确认 {sorted(CONFIRMABLE)}", rule="confirm-not-allowed")
+                continue
+            hit = [i for i in self.issues if i["level"] == "pending" and i["rule"] == x["rule"] and i["where"] == x["where"]]
+            if not hit:
+                self.error("x-confirmed", f"{x} 没有对应的待确认项，删去这条确认", rule="confirm-unused")
+            for i in hit:
+                i["level"] = "confirmed"
+                out.append(i)
+        return out
 
     def relationship(self, where, r: dict) -> dict | None:
         """论文表单中的关系：只有本文 → 被引论文的 CITES，选择性写入，须有引用上下文。"""
@@ -221,8 +265,8 @@ class Compiler:
             return {"mention": spec.get("mention"), "kind": spec.get("kind")}
         if "id" in spec:
             kind = KIND_OF_PREFIX.get(str(spec["id"]).rpartition("_")[0])
-            if not kind:
-                self.error(where, f"id {spec['id']!r} 的前缀不对应任何 kind")
+            if FAMILY.get(kind) not in REQUIRED:
+                self.error(where, f"id {spec['id']!r} 的前缀不对应任何 Entity / Concept kind")
             if spec.get("register") and not spec.get("printed"):
                 self.error(where, "register 需要 printed：注册的是原文印的称呼")
             if extra := set(spec) - {"id", "printed", "register"}:
@@ -239,104 +283,134 @@ class Compiler:
             self.error(where, "fill 没有要补的属性")
         if "name" in props or "id" in props:
             self.error(where, "fill 不改 name 与 id")
-        return {"target": target, "props": props}
+        return {"target": target, "props": props, "keys": {}}
 
-    def experiment(self, exp: dict, domain: str, names: dict, bindable: set) -> dict | None:
-        """报告级实验：表在哪、比了谁、在哪些数据集与指标上、实验级条件。数值留在原文（extraction_principles.md §4）。"""
-        where = f"experiments.{exp.get('ref')}"
-        if extra := {k for k in exp if not k.startswith("x-")} - EXP_KEYS:
-            self.error(where, f"未知字段 {sorted(extra)}")
-        anchor = exp.get("anchor")
-        if not anchor or not any(f'id="{anchor}"' in line for line in self.lines):
-            self.error(where, f"主锚点 {anchor!r} 不在材料中")
+    def paper_fill(self, entry: dict) -> dict:
+        """paper 写 fill：补全已有的 Paper 桩节点。本文印的标题可经 aliases 注册为该节点的称呼。"""
+        target, props = entry["fill"], dict(entry.get("properties") or {})
+        if not isinstance(target, dict) or set(target) != {"id"} or KIND_OF_PREFIX.get(str(target["id"]).rpartition("_")[0]) != "Paper":
+            self.error("paper", "paper 的 fill 应为 {id: <Paper id>}")
+        if "name" in props or "id" in props:
+            self.error("paper", "fill 不改 name 与 id；本文印的标题写进 aliases")
+        if bad := [k for k, v in props.items() if not scalar_or_list(v)]:
+            self.error("paper", f"属性 {bad} 不是标量或标量列表")
+        self.identifiers("paper", props)
+        aliases = props.pop("aliases", [])
+        if not str_list(aliases):
+            self.error("paper", "aliases 应为称呼列表")
+            aliases = []
+        if not props and not aliases:
+            self.error("paper", "fill 没有要补的属性")
+        return {"target": dict(target, kind="Paper"), "props": props, "keys": {name_key(a, "Paper"): a for a in aliases}}
+
+    def experiment(self, where, exp: dict, names: dict, bindable: set) -> dict | None:
+        """实验级：一个研究问题一项，存描述、锚点与参与关系；数值与条件留在原文（extraction_principles.md §4）。"""
+        anchors = exp.get("anchors")
+        if not str_list(anchors) or not anchors:
+            self.error(where, "anchors 应为非空的锚点列表，第一个为主锚点")
             return None
-        for k in ("section", "text", "task"):
+        where = f"experiments.{anchors[0]}"
+        if extra := {k for k in exp if not k.startswith("x-")} - EXP_KEYS:
+            self.error(where, f"未知字段 {sorted(extra)}；条件、变体与疑点不进表单（extraction_principles.md §4、§6）")
+        spans = self.locators(f"{where}.locators", exp.get("locators"))
+        if len(anchors) != len(set(anchors)):
+            self.error(where, f"anchors 有重复 {anchors}")
+        for a in anchors:
+            line = self.anchor_line(a)
+            if line is None:
+                self.error(where, f"锚点 {a!r} 不在材料中")
+            elif spans and not any(lo <= line <= hi for lo, hi in spans):
+                self.error(where, f"锚点 {a!r}（第 {line} 行）不在该实验任一 locator 的行范围内")
+        for k in ("text", "task"):
             if not exp.get(k):
                 self.error(where, f"缺 {k}")
         if exp.get("task") and exp["task"] not in bindable:
             self.error(where, f"task {exp['task']!r} 不在 refs 或 objects 中")
-        lo, hi = (exp.get("lines") or [0, 0])
-        if not 1 <= lo <= hi <= len(self.lines):
-            self.error(where, f"lines {exp.get('lines')} 超出材料范围")
-            return None
-        # 表格范围内的原文，去掉 Markdown 强调与公式记号，供称呼核对
-        table = EMPHASIS.sub("", "\n".join(self.lines[lo - 1:hi])).lower()
+        if isinstance(exp.get("text"), str) and (nums := DECIMAL.findall(exp["text"])):
+            self.pending(where, f"实验描述中出现数值 {nums}：描述不转录数值，删去或在 x-confirmed 中确认", "decimal-in-text")
+        table = self.text_in(spans)
 
         def printed(w, labels):
             labels = [x for x in labels or [] if x]
-            if labels and not any(x.lower() in table for x in labels):
-                self.pending(w, f"原文表格范围（第 {lo}–{hi} 行）中找不到 {' / '.join(map(repr, labels))}，确认称呼与绑定对象")
-
-        # 实验级条件：规则可直接判定的部分；其余写进 setting
-        declared = DOMAINS[domain]["conditions"]
-        conditions = {c: None for c in declared} | dict(exp.get("conditions") or {})
-        basis = dict(exp.get("condition_basis") or {})
-        for c, v in conditions.items():
-            form = condition_form(domain, c, v) if c in declared else None
-            if c not in declared:
-                self.error(where, f"条件 {c!r} 未在领域 {domain} 声明")
-            elif form is None:
-                self.error(where, f"条件 {c}={v!r} 不合语法 {sorted(declared[c])}")
-            elif form == "convention" and c not in basis:
-                self.error(where, f"条件 {c} 映射到切分约定，须在 condition_basis 中给出原文依据")
-        for c, loc in basis.items():
-            self.locator(f"{where}.condition_basis.{c}", loc)
+            if spans and labels and not any(x.lower() in table for x in labels):
+                self.pending(w, f"该实验的行范围内找不到 {' / '.join(map(repr, labels))}，核对称呼与绑定对象，无误时在 x-confirmed 中确认",
+                             "name-not-in-range")
 
         participants = []
         for i, part in enumerate(exp.get("participants") or []):
             w = f"{where}.participants[{i}]"
             if extra := set(part) - PART_KEYS:
-                self.error(w, f"未知字段 {sorted(extra)}")
+                self.error(w, f"未知字段 {sorted(extra)}；变体、来源性质不进表单（extraction_principles.md §2、§5）")
             subj = part.get("subject")
             if subj not in bindable:
                 self.error(w, f"subject {subj!r} 不在 refs 或 objects 中")
             if subj in {x["subject"] for x in participants}:
-                self.error(w, f"{subj} 在同一实验中重复出现；变体写进 variants")
+                self.error(w, f"{subj} 在同一实验中重复出现")
             if part.get("role") not in ROLES:
                 self.error(w, f"role 应为 {sorted(ROLES)}")
-            variants = part.get("variants") or []
-            if not isinstance(variants, list) or not all(isinstance(v, str) for v in variants):
-                self.error(w, "variants 应为原文印的变体标签列表")
-                variants = []
-            origin = part.get("origin", "unstated")
-            origin = origin if isinstance(origin, dict) else {"kind": origin}
-            if origin.get("kind") not in ORIGINS:
-                self.error(w, f"origin 应为 {sorted(ORIGINS)}")
-            if origin.get("kind") in ("rerun", "cited"):
-                if not origin.get("basis"):
-                    self.error(w, f"origin={origin['kind']} 必须给出原文依据 basis")
-                else:
-                    self.locator(w, origin["basis"])
-                if origin["kind"] == "cited" and not origin.get("from"):
-                    self.error(w, "origin=cited 必须写明转引出处 from")
-                elif origin["kind"] == "cited" and self.kinds.get(origin["from"]) != "Paper":
-                    self.error(w, f"转引出处 from={origin['from']!r} 应为 refs 或 objects 中的 Paper（被引论文可建桩节点）")
-            if origin.get("from") and origin.get("kind") != "cited":
-                self.error(w, "from 只用于 origin=cited")
-            for labels in [[v] for v in variants] or [names.get(subj)]:
-                printed(w, labels)
-            participants.append({"subject": subj, "role": part.get("role"), "variants": variants,
-                                 "origin": origin.get("kind"), "origin_basis": origin.get("basis"),
-                                 "origin_from": origin.get("from")})
+            printed(w, names.get(subj))
+            participants.append({"subject": subj, "role": part.get("role")})
         if not any(x["role"] == "target" for x in participants):
             self.error(where, "至少要有一个 role=target 的被测对象")
 
-        for field_ in ("data", "metrics"):
-            refs_ = exp.get(field_) or []
-            if not refs_:
-                self.error(where, f"缺 {field_}")
-            if len(refs_) != len(set(refs_)):
-                self.error(where, f"{field_} 有重复")
-            for r in refs_:
-                if r not in bindable:
-                    self.error(where, f"{field_} 中的 {r!r} 不在 refs 或 objects 中")
-                else:
-                    printed(f"{where}.{field_}", names.get(r))
+        data = exp.get("data") or []
+        if not data:
+            self.error(where, "缺 data")
+        if len(data) != len(set(data)):
+            self.error(where, "data 有重复")
+        for r in data:
+            if r not in bindable:
+                self.error(where, f"data 中的 {r!r} 不在 refs 或 objects 中")
+            else:
+                printed(f"{where}.data", names.get(r))
+        bench = exp.get("benchmark")
+        if bench is not None:
+            if bench not in bindable:
+                self.error(where, f"benchmark {bench!r} 不在 refs 或 objects 中")
+            elif self.kinds.get(bench) not in (None, "Benchmark"):
+                self.error(where, f"benchmark {bench!r} 的 kind 是 {self.kinds[bench]}，应为 Benchmark")
 
-        return {"ref": exp.get("ref"), "anchor": anchor, "section": exp.get("section"), "lines": [lo, hi],
-                "task": exp.get("task"), "text": exp.get("text"), "setting": exp.get("setting"), "note": exp.get("note"),
-                "conditions": conditions, "condition_basis": basis, "participants": participants,
-                "data": list(exp.get("data") or []), "metrics": list(exp.get("metrics") or [])}
+        return {"anchors": list(anchors), "locators": list(exp.get("locators") or []), "task": exp.get("task"),
+                "text": exp.get("text"), "participants": participants, "data": list(data), "benchmark": bench}
+
+    def contents(self, kind: str, field_: str, items: list, bindable: set, primary: set) -> list[dict]:
+        """主张与自述贡献：短键、描述、正文定位与关联对象；主张另有本文实验的依据（extraction_principles.md §9）。"""
+        out, keys = [], set()
+        for i, c in enumerate(items):
+            where = f"{field_}[{i}]"
+            if not isinstance(c, dict):
+                self.error(where, "应为映射")
+                continue
+            if extra := {k for k in c if not k.startswith("x-")} - CONTENT_KEYS[kind]:
+                self.error(where, f"未知字段 {sorted(extra)}")
+            key = c.get("key")
+            if not isinstance(key, str) or not key:
+                self.error(where, "缺 key：本文内唯一的短键")
+                continue
+            where = f"{field_}.{key}"
+            if key in keys:
+                self.error(where, f"key {key!r} 在 {field_} 中重复")
+            keys.add(key)
+            if not isinstance(c.get("text"), str) or not c["text"].strip():
+                self.error(where, "缺 text")
+            self.locators(f"{where}.locators", c.get("locators"))
+            about = c.get("about") or []
+            if not isinstance(about, list):
+                self.error(where, "about 应为对象引用列表")
+                about = []
+            for r in about:
+                if r not in bindable:
+                    self.error(where, f"about 中的 {r!r} 不在 refs 或 objects 中")
+            supported = c.get("supported_by") or []
+            if not isinstance(supported, list):
+                self.error(where, "supported_by 应为本表单实验的主锚点列表")
+                supported = []
+            for a in supported:
+                if a not in primary:
+                    self.error(where, f"supported_by 中的 {a!r} 不是本表单实验的主锚点")
+            out.append({"kind": kind, "key": key, "text": c.get("text"), "locators": list(c.get("locators") or []),
+                        "about": list(dict.fromkeys(about)), "supported_by": list(dict.fromkeys(supported))})
+        return out
 
 
 def compile_form(path) -> tuple[dict, list[dict]]:
@@ -353,12 +427,17 @@ def summary(delta: dict, issues: list[dict]) -> str:
         lines += [f"新对象 {len(new)}：{', '.join(new)}",
                   f"引用 {len(delta['refs'])} · 补全 {len(delta['fills'])} · 关系 {len(delta['rels'])}"]
         for e in delta["experiments"]:
-            parts = [f"{x['subject']}({x['role']}{'; ' + ','.join(x['variants']) if x['variants'] else ''})" for x in e["participants"]]
-            lines.append(f"实验 {e['anchor']}：数据集 {len(e['data'])} · 指标 {len(e['metrics'])} · 被测对象 {', '.join(parts)}")
+            parts = [f"{x['subject']}({x['role']})" for x in e["participants"]]
+            bench = f" · Benchmark {e['benchmark']}" if e["benchmark"] else ""
+            lines.append(f"实验 {e['anchors'][0]}：锚点 {len(e['anchors'])} · 数据集 {len(e['data'])}{bench} · 被测对象 {', '.join(parts)}")
+        for kind in ("Claim", "Contribution"):
+            items = [c for c in delta["contents"] if c["kind"] == kind]
+            if items:
+                lines.append(f"{kind} {len(items)}：{', '.join(c['key'] for c in items)}")
     errors = [i for i in issues if i["level"] == "error"]
     pend = [i for i in issues if i["level"] == "pending"]
-    lines.append(f"错误 {len(errors)} · 待确认 {len(pend)}")
-    lines += [f"  [{i['level']}] {i['where']}：{i['msg']}" for i in issues]
+    lines.append(f"错误 {len(errors)} · 待确认 {len(pend)} · 已确认 {sum(i['level'] == 'confirmed' for i in issues)}")
+    lines += [f"  [{i['level']}] {i['rule']} @ {i['where']}：{i['msg']}" for i in issues]
     return "\n".join(lines)
 
 

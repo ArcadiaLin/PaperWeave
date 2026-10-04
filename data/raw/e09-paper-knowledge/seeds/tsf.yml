@@ -290,32 +290,6 @@ nodes:
       - https://github.com/laiguokun/multivariate-time-series-data
     verified: true
 
-  # ---------- Concept.Metric ----------
-  - ref: met_mse
-    labels: [Concept, Metric]
-    properties:
-      name: MSE
-      direction: lower
-      aliases: [Mean Squared Error]
-      definition: >
-        Mean of squared differences between predictions and ground truth; in forecasting it is
-        averaged over forecast steps, variables and samples.
-      note: >
-        Before comparing values across works, check whether the data were normalized and how
-        errors were aggregated over variables, horizons and samples.
-
-  - ref: met_mae
-    labels: [Concept, Metric]
-    properties:
-      name: MAE
-      direction: lower
-      aliases: [Mean Absolute Error]
-      definition: >
-        Mean of absolute differences between predictions and ground truth.
-      note: >
-        Before comparing values across works, check whether the data were normalized and how
-        errors were aggregated.
-
 relationships:
   # Task 层级
   - {from: task_ltsf, type: BROADER, to: task_tsf}

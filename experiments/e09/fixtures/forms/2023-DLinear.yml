@@ -1,9 +1,8 @@
-# 入库表单夹具 paper-form-v2（报告级）：编译与 Commit 的检验用例，各只录一张表，不是正式入库表单。
-# 报告级只记录实验在哪张表、比了谁、在哪些数据集与指标上、实验级条件；数值留在原文，比较时按锚点读取。
+# 入库表单夹具 paper-form-v4：编译与 Commit 的检验用例，只录一组实验、一条主张与一条贡献，不是正式入库表单。
+# 实验按研究问题分组，只存描述、锚点与参与关系；数值、条件与变体留在原文，按锚点读取。
 # 写法见 docs/designs/v2/extraction_principles.md 与 commit_contract.md。
 
-form: paper-form-v2
-domain: ltsf
+form: paper-form-v4
 material: {path: papers/2023-DLinear/paper.md, sha256: 1ec346c934e6ebac616e861bd0fa46fcb56157bd0a8ed7190be29dffa3ee1065}
 
 paper:
@@ -27,8 +26,6 @@ refs:
   traffic: {mention: Traffic, kind: Dataset}
   weather: {mention: Weather, kind: Dataset}
   ili:    {mention: ILI, kind: Dataset}
-  mse:    {mention: MSE, kind: Metric}
-  mae:    {mention: MAE, kind: Metric}
 
 objects:
   # 本文核心方法：做到本文自身的深度
@@ -56,29 +53,34 @@ objects:
 relationships: []   # 方法间关系不在单篇抽取中包办
 
 experiments:
-  - ref: x_t4
-    anchor: S5.T4
-    section: "5.3 Comparison under a Large Look-Back Window Size"
-    lines: [251, 290]
+  - anchors: [S5.T4]
+    locators: ["5.3 Comparison under a Large Look-Back Window Size::245:290"]
     task: ltsf
     text: >
-      Multivariate long-term forecasting on nine benchmarks comparing DLinear with a long
-      look-back window against FEDformer and Autoformer kept at their best setting.
-    setting: >
-      Multivariate; MSE and MAE, lower is better. Look-back window L=336 for DLinear;
-      FEDformer and Autoformer keep L=96, their best setting. Forecasting horizon
-      T in {96, 192, 336, 720}. Variant labels as printed: DLinear-S shares one linear layer
-      across all variates (the paper's default); DLinear-I uses an individual linear layer per
-      variate; FEDformer-f / FEDformer-w are FEDformer with Fourier / wavelet enhanced blocks.
-    note: >
-      ILI rows are printed with horizons 96-720, implausible for ILI (966 time steps) with L=336.
-      The FEDformer-f and Autoformer values on ILI equal Table 2's ILI values at horizons 24-60,
-      so the horizon labels are likely misprinted and those baseline values likely reused from Table 2.
+      Tests whether DLinear benefits from a long look-back window on nine multivariate
+      benchmarks. DLinear uses a longer look-back window while FEDformer and Autoformer keep the
+      shorter window that the paper reports as their best setting. The paper claims DLinear
+      largely surpasses both Transformer baselines under this setting.
     participants:
-      - {subject: dlinear,    role: target,   variants: [DLinear-S, DLinear-I], origin: own}
-      - {subject: fedformer,  role: baseline, variants: [FEDformer-f, FEDformer-w], origin: unstated}
-      - {subject: autoformer, role: baseline, origin: unstated}
+      - {subject: dlinear,    role: target}
+      - {subject: fedformer,  role: baseline}
+      - {subject: autoformer, role: baseline}
     data: [etth1, etth2, ettm1, ettm2, elec, exch, traffic, weather, ili]
-    metrics: [mse, mae]
-    conditions: {split: "convention:ltsf-autoformer"}
-    condition_basis: {split: "5.2 Comparison of Multivariate Forecasting with Transformers::203:203"}   # "following the experimental setting of previous work [27, 29, 28]"
+
+claims:
+  - key: beats-transformers
+    text: >
+      The paper claims that DLinear outperforms existing Transformer-based long-term forecasting
+      models in most cases by a large margin.
+    locators: ["1 Introduction::30:30"]
+    about: [dlinear, fedformer, autoformer, ltsf]
+    supported_by: [S5.T4]
+
+contributions:
+  - key: dlinear
+    text: >
+      The paper contributes DLinear, an embarrassingly simple baseline that decomposes a series
+      into trend and remainder and forecasts each with a one-layer linear network using direct
+      multi-step forecasting.
+    locators: ["1 Introduction::28:28"]
+    about: [dlinear, ltsf]

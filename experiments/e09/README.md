@@ -31,7 +31,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
       papers.yml, status.yml, runs/   # 复制自 e08（2026-10-02），材料准备的原始记录
       papers/<citekey>/paper.md …     # 论文材料，复制自 e08，只读
       seeds/                          # v2 种子（版本管理），格式见 seeds/README.md
-      forms/                          # 论文入库表单 paper-form-v2（版本管理）
+      forms/                          # 论文入库表单 paper-form-v4（版本管理）
 
 `papers/`、`runs/` 等材料不进版本管理，只有 `seeds/` 与 `forms/` 被跟踪。
 
@@ -52,8 +52,9 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `env_check` | 环境自检（`make check`） |
 | `seed` | 种子入库入口：固定写入顺序、读种子文件，逐批经 Commit 写入（`make seed`） |
 | `ingest` | 论文入库入口：按 `INGEST_ORDER` 读 `forms/`，逐批编译、dry_run、apply（`make ingest`） |
-| `form` | 论文表单编译（不连库）：表单 → delta，报告错误与待确认项（`make compile`）；契约见 `docs/designs/v2/commit_contract.md` |
-| `operators/commit/` | Commit：增量检查 → plan（dry_run）→ apply → 复核。`seed` 处理种子增量；`paper` 处理论文表单编译出的报告级增量（Experiment 与参与边、Material、IngestBatch；数值留在原文），`apply_paper(commit=False)` 为演练：写入并复核后回滚 |
+| `commit` | 单表单入口，供 Agent 逐份迭代：`python -m e09.commit <表单> [--apply] [--text]`，输出结构化 plan（状态、将写入的内容、阻塞项及其候选与改法） |
+| `form` | 论文表单 paper-form-v4 编译（不连库）：表单 → delta（实验、主张、自述贡献），报告错误与待确认项（`make compile`）；契约见 `docs/designs/v2/commit_contract.md` |
+| `operators/commit/` | Commit：增量检查 → plan（dry_run）→ apply → 复核。`seed` 处理种子增量；`paper` 处理 paper-form-v4 编译出的增量（Experiment、Claim、Contribution 与其关系、Material、IngestBatch；数值留在原文），`apply_paper(commit=False)` 为演练：写入并复核后回滚 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
 | `operators/experiments` | Experiments：按被测对象（任一命中）、数据集（严格，或沿 PART_OF / VERSION_OF 展开）、指标与论文范围取实验报告；纯结构匹配，不走语义通道；返回参与方的角色、变体与来源性质、条件、材料定位，以及 expandable / role_missing 诊断 |
@@ -64,7 +65,6 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `utils/ids` | 按 kind 顺序分配对象 id |
 | `utils/embedding` | 向量服务（与 e08 共用 Qwen3-Embedding-8B）、向量索引与补算（`make embed`） |
 | `utils/fusion` | 语义阶段的召回参数、分词与 RRF 融合 |
-| `utils/domain` | 领域配置：实验级条件的取值语法、有名字的切分约定 |
 
 种子入库与失败路径演示见 `notebooks/01_seed_ingest.ipynb`，Resolve 与 Get 的用例见 `notebooks/02_resolve_get.ipynb`。尚未实现的算子列在 `operators/__init__.py`。
 
