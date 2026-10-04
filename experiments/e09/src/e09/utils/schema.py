@@ -18,6 +18,7 @@ REL_RULES = {   # Entity / Concept 之间已实现写入的关系 -> (起点主 
 PAPER_RELS = {"CITES"}   # 论文表单能写的关系；其余关系仍只由种子写入
 STANCE_RELS = {"SUPPORTS", "OPPOSES"}    # 正反关系：增补表单写入，两端同为 Claim 或同为 Proposition（§6.2.2）
 STANCE_KINDS = {"Claim", "Proposition"}
+DESCRIBED_RELS = ["CITES", "SUPPORTS", "OPPOSES", "IMPLEMENTS", "ADDRESSES"]   # 边上带 description 的关系，建关系向量索引（§5）
 SYMMETRIC = {"OVERLAPS_WITH"}   # 语义对称，不分方向
 FORM_ONLY = {"aliases"}         # 表单字段：注册为 NameKey，不写进对象
 

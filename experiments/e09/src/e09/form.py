@@ -1,4 +1,7 @@
-"""论文表单编译：表单 → delta（docs/designs/v2/commit_contract.md §1、§2.1、§4）。
+"""表单编译：表单 → delta（docs/designs/v2/commit_contract.md §1、§2、§4）。
+
+两种表单：论文表单 paper-form-v4（Compiler）写论文陈述的内容；增补表单 supplement-form-v1（SupplementCompiler）
+写 Agent 形成的 Observation、Agent 认为的贡献与正反关系。compile_form 按 form 字段分派。
 
 compile 不查库，只看表单与材料文件；同一表单与材料必得同一结果。问题分两级：
 - error：表单自身写错（结构、锚点或定位不在材料中……），由 Agent 改表单；
@@ -9,7 +12,7 @@ compile 不查库，只看表单与材料文件；同一表单与材料必得同
 数值、条件与变体留在原文，按锚点读取（extraction_principles.md §4、§9）。
 引用解析、查重、冲突与幂等在 Commit 的 dry_run 中判定，不在这里。
 
-    uv run python -m e09.form <表单.yml> ...    # 打印编译摘要与问题；有 error 时返回非零
+    uv run python -m e09.form <表单.yml> ...    # 打印编译摘要与问题；有 error 时返回非零（两种表单都可）
 """
 
 import hashlib
@@ -21,15 +24,18 @@ import yaml
 
 from .config import DATA
 from .utils.namekey import name_key
-from .utils.schema import FAMILY, KINDS, NAMESPACES, PAPER_RELS, PREFIX, REQUIRED
+from .utils.schema import FAMILY, KINDS, NAMESPACES, PAPER_RELS, PREFIX, REQUIRED, STANCE_KINDS, STANCE_RELS
 
 FORM_VERSION = "paper-form-v4"
+SUPPLEMENT_VERSION = "supplement-form-v1"
 TOP_KEYS = {"form", "material", "paper", "refs", "objects", "relationships", "experiments", "claims", "contributions"}
 EXP_KEYS = {"anchors", "locators", "task", "text", "participants", "data", "benchmark"}
 PART_KEYS = {"subject", "role"}
 CONTENT_KEYS = {"Claim": {"key", "text", "locators", "about", "supported_by"},
                 "Contribution": {"key", "text", "locators", "about"}}
 REL_KEYS = {"from", "type", "to", "basis", "description"}
+SUPPLEMENT_KEYS = {"form", "formed_by", "refs", "observations", "contributions", "relationships"}
+SUPPLEMENT_RECORD_KEYS = {"Observation": {"text", "about", "basis"}, "Contribution": {"paper", "text", "about", "basis"}}
 ROLES = {"target", "baseline"}
 LOCATOR = re.compile(r"(?P<section>.+)::(?P<start>\d+):(?P<end>\d+)")   # <章节>::<start>:<end>，行号从 1 起
 REFERENCES = re.compile(r"#+\s*(References|Bibliography)\s*", re.I)   # 参考文献节的标题
@@ -67,23 +73,25 @@ class Compiler:
 
     # ── 共用检查 ──
 
-    def locator(self, where, loc) -> tuple[int, int] | None:
+    def locator(self, where, loc, lines=None) -> tuple[int, int] | None:
+        """lines：定位所在材料的行；默认是本表单的 material。"""
+        lines = self.lines if lines is None else lines
         m = LOCATOR.fullmatch(loc) if isinstance(loc, str) else None
         if not m:
             self.error(where, f"定位 {loc!r} 应为 <章节>::<start>:<end>")
             return None
         start, end = int(m["start"]), int(m["end"])
-        if not 1 <= start <= end <= len(self.lines):
-            self.error(where, f"定位 {loc!r} 超出材料范围（共 {len(self.lines)} 行）")
+        if not 1 <= start <= end <= len(lines):
+            self.error(where, f"定位 {loc!r} 超出材料范围（共 {len(lines)} 行）")
             return None
         return start, end
 
-    def locators(self, where, locs) -> list[tuple[int, int]]:
+    def locators(self, where, locs, lines=None) -> list[tuple[int, int]]:
         """非空定位列表；返回有效的行范围。"""
         if not str_list(locs) or not locs:
             self.error(where, "locators 应为非空的定位列表")
             return []
-        return [span for loc in locs if (span := self.locator(where, loc))]
+        return [span for loc in locs if (span := self.locator(where, loc, lines))]
 
     def anchor_line(self, anchor) -> int | None:
         """锚点所在行（从 1 起）；材料中没有时返回 None。"""
@@ -245,16 +253,20 @@ class Compiler:
                 "description": r.get("description")} if ok else None
 
     def material(self, m: dict) -> dict:
+        info, self.lines = self.load_material("material", m)
+        return info
+
+    def load_material(self, where, m: dict) -> tuple[dict, list[str]]:
+        """材料文件：路径相对 DATA；返回 ({path, sha256}, 行)，不存在时为 ({}, [])。"""
         path = DATA / str(m.get("path", ""))
         if not m.get("path") or not path.is_file():
-            self.error("material", f"材料不存在：{m.get('path')!r}（相对 {DATA}）")
-            return {}
+            self.error(where, f"材料不存在：{m.get('path')!r}（相对 {DATA}）")
+            return {}, []
         data = path.read_bytes()
         sha = hashlib.sha256(data).hexdigest()
         if m.get("sha256") and m["sha256"] != sha:
-            self.error("material", f"内容哈希不符：表单 {m['sha256'][:12]}…，文件 {sha[:12]}…")
-        self.lines = data.decode("utf-8").splitlines()
-        return {"path": m["path"], "sha256": sha}
+            self.error(where, f"内容哈希不符：表单 {m['sha256'][:12]}…，文件 {sha[:12]}…")
+        return {"path": m["path"], "sha256": sha}, data.decode("utf-8").splitlines()
 
     def ref(self, where, spec: dict) -> dict:
         if "mention" in spec:
@@ -413,16 +425,153 @@ class Compiler:
         return out
 
 
+class SupplementCompiler(Compiler):
+    """增补表单 supplement-form-v1（commit_contract.md §2.2）：Agent 形成的 Observation、Agent 认为的贡献与正反关系。
+
+    不新建 Entity、Concept，不注册 alias；refs 只能引用已在库中的对象：Entity / Concept 用 {mention, kind} 或 {id}，
+    Content（Claim、Experiment 等）只能用 {id}。三段都可省略，至少一段非空。formed_by 整份表单共用，formed_at 由 apply 写入。
+    """
+
+    def run(self) -> dict:
+        raw = self.raw
+        if raw.get("form") != SUPPLEMENT_VERSION:
+            self.error("form", f"表单版本应为 {SUPPLEMENT_VERSION}，实际是 {raw.get('form')!r}")
+        if extra := {k for k in raw if not k.startswith("x-")} - SUPPLEMENT_KEYS:
+            self.error("表单", f"未知字段 {sorted(extra)}；增补表单不新建对象，也不注册 alias")
+        formed_by = raw.get("formed_by")
+        if not isinstance(formed_by, str) or not formed_by.strip():
+            self.error("formed_by", "缺 formed_by：形成者，由提交的 Agent 填写")
+        if not any(raw.get(k) for k in ("observations", "contributions", "relationships")):
+            self.error("表单", "observations、contributions、relationships 至少一段非空")
+        refs = {ref: self.ref(f"refs.{ref}", spec) for ref, spec in (raw.get("refs") or {}).items()}
+        self.kinds = {r: spec.get("kind") for r, spec in refs.items()}
+        observations = [o for i, x in enumerate(raw.get("observations") or [])
+                        if (o := self.record("Observation", f"observations[{i}]", x))]
+        contributions = [o for i, x in enumerate(raw.get("contributions") or [])
+                         if (o := self.record("Contribution", f"contributions[{i}]", x))]
+        for field_, items in (("observations", observations), ("contributions", contributions)):
+            seen = [record_identity(o) for o in items]
+            if dup := sorted({i for i, k in enumerate(seen) if seen.index(k) != i}):
+                self.error(field_, f"第 {dup} 项与前面的记录重复（同一 text 与对象集合）")
+        rels = [r for i, x in enumerate(raw.get("relationships") or []) if (r := self.stance(f"relationships[{i}]", x))]
+        triples = [(r["from"], r["type"], r["to"]) for r in rels]
+        if dup := sorted({t for t in triples if triples.count(t) > 1}):
+            self.error("relationships", f"关系重复 {dup}")
+        confirmed = self.confirm(raw.get("x-confirmed") or [])
+        return {"name": self.name, "form": SUPPLEMENT_VERSION, "formed_by": formed_by, "refs": refs,
+                "observations": observations, "contributions": contributions, "rels": rels, "confirmed": confirmed}
+
+    def ref(self, where, spec: dict) -> dict:
+        if not isinstance(spec, dict):
+            self.error(where, "引用应为 {mention, kind} 或 {id}")
+            return {}
+        if "id" in spec:
+            kind = KIND_OF_PREFIX.get(str(spec["id"]).rpartition("_")[0])
+            if kind is None:
+                self.error(where, f"id {spec['id']!r} 的前缀不对应任何 kind")
+            if extra := set(spec) - {"id"}:
+                self.error(where, f"未知字段 {sorted(extra)}；增补表单不注册 alias")
+            return {"id": spec["id"], "kind": kind, "printed": None, "register": False}
+        if "mention" in spec and FAMILY.get(spec.get("kind")) == "Content":
+            self.error(where, f"{spec['kind']} 没有称呼，只能用 {{id}} 引用")
+            return {}
+        if extra := set(spec) - {"mention", "kind"}:
+            self.error(where, f"未知字段 {sorted(extra)}；增补表单不注册 alias")
+        return super().ref(where, {k: v for k, v in spec.items() if k in ("mention", "kind")})
+
+    def refs_in(self, where, refs, what) -> list:
+        if not isinstance(refs, list):
+            self.error(where, f"{what} 应为引用列表")
+            return []
+        for r in refs:
+            if r not in self.kinds:
+                self.error(where, f"{what} 中的 {r!r} 不在 refs 中")
+        return list(dict.fromkeys(refs))
+
+    def basis(self, where, b) -> dict | None:
+        """可选的材料依据 {material: <材料路径>, locators}：编译为 FROM，终点是该材料所属的论文。"""
+        if b is None:
+            return None
+        if not isinstance(b, dict) or set(b) != {"material", "locators"}:
+            self.error(where, "basis 应为 {material: <材料路径>, locators: [...]}")
+            return None
+        info, lines = self.load_material(where, {"path": b["material"]})
+        if not info:
+            return None
+        self.locators(where, b["locators"], lines)
+        return {"path": info["path"], "sha256": info["sha256"], "locators": list(b["locators"] or [])}
+
+    def record(self, kind: str, where, x) -> dict | None:
+        """Observation 与 Agent 认为的贡献：text、about、可选 basis；贡献另有所属论文 paper。"""
+        if not isinstance(x, dict):
+            self.error(where, "应为映射")
+            return None
+        if extra := {k for k in x if not k.startswith("x-")} - SUPPLEMENT_RECORD_KEYS[kind]:
+            self.error(where, f"未知字段 {sorted(extra)}")
+        if not isinstance(x.get("text"), str) or not x["text"].strip():
+            self.error(where, "缺 text")
+        about = self.refs_in(where, x.get("about") or [], "about")
+        if kind == "Observation" and not about:
+            self.error(where, "Observation 的 about 至少关联一个对象")
+        paper = x.get("paper")
+        if kind == "Contribution" and self.kinds.get(paper) != "Paper":
+            self.error(where, f"paper 应为 refs 中的 Paper 引用，实际是 {paper!r}")
+        out = {"kind": kind, "text": x.get("text"), "about": about, "basis": self.basis(f"{where}.basis", x.get("basis"))}
+        return out | ({"paper": paper} if kind == "Contribution" else {})
+
+    def stance(self, where, r) -> dict | None:
+        """正反关系：SUPPORTS / OPPOSES，两端同为 Claim 或同为 Proposition，description 必填（graph_model_v2.md §6.2.2）。"""
+        if not isinstance(r, dict):
+            self.error(where, "应为映射")
+            return None
+        if extra := set(r) - {"from", "type", "to", "description"}:
+            self.error(where, f"未知字段 {sorted(extra)}")
+        ok = True
+        if r.get("type") not in STANCE_RELS:
+            self.error(where, f"增补表单的关系只能是 {sorted(STANCE_RELS)}，实际是 {r.get('type')!r}")
+            ok = False
+        if not isinstance(r.get("description"), str) or not r["description"].strip():
+            self.error(where, "缺 description：写明支持或反对的具体内容与限定条件")
+            ok = False
+        a, b = r.get("from"), r.get("to")
+        for end in (a, b):
+            if end not in self.kinds:
+                self.error(where, f"端点 {end!r} 不在 refs 中")
+                ok = False
+        if ok:
+            ka, kb = self.kinds[a], self.kinds[b]
+            if ka != kb or ka not in STANCE_KINDS:
+                self.error(where, f"两端应同为 Claim 或同为 Proposition，实际是 {ka} → {kb}", rule="stance-kinds")
+                ok = False
+            if a == b:
+                self.error(where, "起点与终点相同")
+                ok = False
+        return {"from": a, "type": r["type"], "to": b, "description": r["description"]} if ok else None
+
+
+def record_identity(o: dict) -> tuple:
+    """Observation 与 Agent 贡献没有自然键：同一形成者下按 text、对象集合（贡献另加所属论文）判重（commit_contract.md §5）。"""
+    return o["kind"], o["text"], tuple(sorted(o["about"])), o.get("paper")
+
+
 def compile_form(path) -> tuple[dict, list[dict]]:
+    """按 form 字段选编译器；delta 带表单文件的内容哈希 form_hash，记入批次记录（commit_contract.md §6）。"""
     path = Path(path)
-    c = Compiler(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, path.stem)
+    data = path.read_bytes()
+    raw = yaml.safe_load(data.decode("utf-8")) or {}
+    c = (SupplementCompiler if raw.get("form") == SUPPLEMENT_VERSION else Compiler)(raw, path.stem)
     delta = c.run()
+    if delta:
+        delta["form_hash"] = hashlib.sha256(data).hexdigest()
     return delta, c.issues
 
 
 def summary(delta: dict, issues: list[dict]) -> str:
     lines = [f"== {delta.get('name', '?')} =="]
-    if delta:
+    if delta.get("form") == SUPPLEMENT_VERSION:
+        lines += [f"形成者 {delta['formed_by']} · 引用 {len(delta['refs'])}",
+                  f"Observation {len(delta['observations'])} · Agent 贡献 {len(delta['contributions'])} · 正反关系 {len(delta['rels'])}"]
+    elif delta:
         new = [n["props"]["name"] + ("（桩）" if n["stub"] else "") for n in delta["nodes"].values()]
         lines += [f"新对象 {len(new)}：{', '.join(new)}",
                   f"引用 {len(delta['refs'])} · 补全 {len(delta['fills'])} · 关系 {len(delta['rels'])}"]

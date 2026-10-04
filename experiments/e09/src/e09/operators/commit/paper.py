@@ -219,7 +219,10 @@ def _dedup(p: PaperPlan, ref: str, n: dict, semantic: bool):
             p.pending.append(issue("pending", "dedup", where, "语义近邻未判定", candidates, "确认不是同一对象后列入 rejected"))
 
 
-def _bind_ref(p: PaperPlan, ref: str, spec: dict, run, semantic: bool):
+REF_FIX = "确认后改写为 {id: …, printed?, register?}；若它应由先前的批次建立，先提交那一批，不要从语义候选中挑选"
+
+
+def _bind_ref(p: PaperPlan, ref: str, spec: dict, run, semantic: bool, fix: str = REF_FIX):
     where = f"refs.{ref}"
     if "id" in spec:
         rows = run("MATCH (o {id: $id}) RETURN labels(o) AS labels", id=spec["id"])
@@ -242,8 +245,7 @@ def _bind_ref(p: PaperPlan, ref: str, spec: dict, run, semantic: bool):
     if semantic:
         r = resolve(spec["mention"], kind=spec["kind"], mode="read")
         candidates = _describe(r["refs"][:5]) if r["refs"] else None
-    p.pending.append(issue("pending", "ref-unresolved", where, f"{spec['mention']!r} 未在 id / alias 级唯一命中", candidates,
-                           "确认后改写为 {id: …, printed?, register?}；若它应由先前的批次建立，先提交那一批，不要从语义候选中挑选"))
+    p.pending.append(issue("pending", "ref-unresolved", where, f"{spec['mention']!r} 未在 id / alias 级唯一命中", candidates, fix))
 
 
 def _plan_register(p: PaperPlan, where: str, oid: str, raw: str, kind: str, run):
@@ -408,6 +410,12 @@ def _link(tx, src_label: str, src_id: str, rel: str, dst_label: str, rows: list[
         raise RuntimeError(f"{what} 的 {rel}：{len(rows)} 条只写入 {c} 条（端点没匹配上）")
 
 
+def next_batch_id(run) -> str:
+    """批次 id：论文与增补批次共用一个序列。"""
+    last = run("MATCH (b:IngestBatch) RETURN max(toInteger(substring(b.id, 6))) AS m")[0]["m"] or 0
+    return f"batch_{last + 1:04d}"
+
+
 def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int | None) -> dict:
     """在事务 tx 中写入一批；返回 ref -> id。"""
     delta, run = p.delta, _txrun(tx)
@@ -498,13 +506,13 @@ def _write(tx, p: PaperPlan, alloc: IdAllocator, committed_by: str, rounds: int 
             raise RuntimeError(f"{rel['type']} {rel['from']} → {rel['to']} 未写入（端点没匹配上）")
 
     # 批次记录
-    last = run("MATCH (b:IngestBatch) RETURN max(toInteger(substring(b.id, 6))) AS m")[0]["m"] or 0
-    bid = f"batch_{last + 1:04d}"
+    bid = next_batch_id(run)
     tx.run("""MATCH (paper:Entity:Paper {id: $paper})
               CREATE (b:IngestBatch) SET b = $props
               CREATE (b)-[:RECORDS]->(paper)""",
            paper=paper_id, props=compact({
-               "id": bid, "form": delta["form"], "form_name": delta["name"], "material_hash": m["sha256"],
+               "id": bid, "form": delta["form"], "form_name": delta["name"], "form_hash": delta.get("form_hash"),
+               "material_hash": m["sha256"],
                "coverage": delta["coverage"], "committed_by": committed_by, "rounds": rounds,
                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                "confirmed": [f"{i['rule']}@{i['where']}" for i in p.confirmed] or None,
