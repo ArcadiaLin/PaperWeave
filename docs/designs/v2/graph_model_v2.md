@@ -1,8 +1,8 @@
 # Graph Model V2
 
-> **状态：** 候选清单（2026-10-02）；第 7 节第 1–10 项已与用户确认。Paper、Method、Dataset、Metric、Task、Experiment 及其参与边、`CITES` 已经两篇论文（DLinear、PatchTST）的入库检验（E09，2026-10-03，见 [Commit 契约](./commit_contract.md)）；同日第一个 I3 实例试跑后，Experiment 改为按研究问题分组、只存描述与定位（4.2、4.4、6.2.1），其余部分尚未经真实论文检验。列出由 workload 拆解得到的候选 Node 与 Relationship，并标出需要重新考虑的 Property。Q1–Q8 指 [v2 未定模型问题与写路径](../../discussions/2026-10-01-v2-open-model-decisions-and-write-path.md) 中的编号；D1–D11 指已定决策，正文见 [Workload 拆解](./intents_decompose.md)。
+> **状态：** 候选清单（2026-10-02）；第 7 节第 1–10 项已与用户确认。Paper、Method、Dataset、Metric、Task、Experiment 及其参与边、`CITES` 已经两篇论文（DLinear、PatchTST）的入库检验（E09，2026-10-03，见 [Commit 契约](./commit_contract.md)）；同日第一个 I3 实例试跑后，Experiment 改为按研究问题分组、只存描述与定位（4.2、4.4、6.2.1），其余部分尚未经真实论文检验。2026-10-04 增加"定位"一节（节点只存轻度提炼、锚点与关联），据此退役 ResultUnit（4.3）；Metric 首版不建（3.1）。列出由 workload 拆解得到的候选 Node 与 Relationship，并标出需要重新考虑的 Property。Q1–Q8 指 [v2 未定模型问题与写路径](../../discussions/2026-10-01-v2-open-model-decisions-and-write-path.md) 中的编号；D1–D11 指已定决策，正文见 [Workload 拆解](./intents_decompose.md)。
 
-`V2` 设计一个面向研究 Agent 的论文知识图：保存阅读后形成的理解，通过论文引用、共享方法、资源和命题连接不同论文，让后续研究能够查找、比较和复用已有经验。
+`V2` 设计一个面向研究 Agent 的论文知识图：保存阅读后形成的索引（轻度提炼、原文锚点与关联），通过论文引用、共享方法、资源和命题连接不同论文，让后续研究能够查找、比较和复用已有经验。
 
 相较于 [Graph Model V1](../v1/graph_model.md) 的设计，注重 `Entity`、`Concept`、`Content` 三类区别，Label 采用 `Entity.<sublabel>`、`Concept.<sublabel>`、`Content.<sublabel>` 来划分，且在理论上由 [Workload 拆解](./intents_decompose.md) 与实际数据（待试验，目前仍然是半成品）经验支持。
 
@@ -13,9 +13,8 @@ Graph Model
 │
 ├── Node
 │    ├── Entity     资源对象：Paper、Dataset、Split、Code、Model …
-│    ├── Concept    定义对象：Method、Task、Metric、Protocol、Issue、Proposition
+│    ├── Concept    定义对象：Method、Task、Protocol、Issue、Proposition（Metric 首版不建）
 │    ├── Content    来源化内容：Claim、Experiment、Usage、Observation、Assessment …
-│    ├── 组成节点   ResultUnit（实验视图的一部分，不单独作为语义对象）
 │    └── 系统记录   NameKey、Material（支撑解析与来源，不是语义对象）
 │
 ├── Relationship
@@ -23,9 +22,41 @@ Graph Model
 │    └── 视角二：完整关系清单（Type、端点、Property）
 ```
 
+## 定位：节点存什么（已定，2026-10-04）
+
+图与精读稿的分工不同：
+
+| | 精读稿 | 图 |
+| --- | --- | --- |
+| 范围 | 单篇论文 | 跨论文 |
+| 形态 | 非结构化，高度提炼的转述 | 结构化，轻度提炼的索引 |
+| 用途 | 读懂一篇论文 | 从知识关联的角度找到该读的论文、实验与位置 |
+
+图的收益只来自**关联、检索、发现与复用**，规模越大越明显；读原文就能得到的内容，图不重复保存。精读稿不进入图。
+
+因此节点不转录原文，存的是：
+
+| 内容 | 写法 | 例子 |
+| --- | --- | --- |
+| 轻度提炼 | 用自己的话写到足以判断"要不要去读这里"为止，不写到足以替代阅读 | Experiment 的 `text`（目的、设计、论文的主张，4.2）；Concept 的 `definition`（3.2） |
+| 阅读理解 | 结合任务形成的理解，开头注明任务与日期 | `note`（第 1 节） |
+| 锚点 | 在原文哪里 | `FROM` 的 locators；Experiment 的 `anchors` |
+| 关联 | 和谁有关、以什么角色 | 参与边、`CITES`、概念之间的关系 |
+
+**不存锚点能直接给出的内容：** 数值、表格、超参数与实验设置、原文段落。判据来自第一个 I3 实例的试跑（2026-10-03）：一个字段如果 Agent 总要回原文核实才敢用，它就没有省下阅读。上一版实验上的 `setting`、疑点 `note`、变体标签与逐项来源都是这样，反而引入歧义，并把评测答案带进了图。
+
+例外：
+
+- **名称与标识**（`name`、NameKey、`identifiers`、`year`）：它们是查找的入口，必须结构化。
+- **Paper 的摘要**：Paper 的 `description` 存摘要（2.2）。
+- **没有原文可指的记录**（Observation 的环境与日志、Assessment 的依据）：它们本身就是第一手记录。
+- **关系的说明**（如 `CITES.description`）：写这条关联为什么存在、该去读哪里，同样只写到判断"要不要读"为止。
+
+据此修订（2026-10-04）：ResultUnit 退役（4.3）；Usage 若保留，只存概述与锚点（4.1）；实验实际采用的参数不入库（3.1、4.2、6.2.1）。
+
 ## 0. 记法与状态标记
 
-- `Entity.Paper` 表示物理上的双 Label `(:Entity:Paper)`：主 Label 是类别，次级 Label 是类内 kind。语义对象恰好带一个主 Label 和一个次级 Label；组成节点与系统记录只带自己的 Label。
+- `Entity.Paper` 表示物理上的双 Label `(:Entity:Paper)`：主 Label 是类别，次级 Label 是类内 kind。语义对象恰好带一个主 Label 和一个次级 Label；系统记录只带自己的 Label。
 - Cypher 片段只展示结构，属性值为示意。
 - 本文是工程方案，名词可以与设计文档不同：设计文档中的逻辑字段（如 `kind`、`aliases`、`source_refs`）在这里映射到具体的 Label、Node 或 Relationship，映射关系在对应条目中说明。
 - 与用户确认过的事项注明"已定（日期）"。
@@ -155,14 +186,14 @@ id 级：   url = zhouhaoyi/ETDataset          → {ETT, ETTh1, ETTh2, ETTm1, ET
 | --- | --- | --- | --- | --- |
 | `Method` | 方法方案及方法类别 | 改写 | `Method` + `MethodConcept` | **已定（2026-10-02）**：合并为一个 kind，类别经 `BROADER` 表达（v1 的 `INSTANCE_OF` 与 `SUBTYPE_OF` 都并入）。代价是失去"具体方案 / 类别"的区分；若 I1 需要只取具体方案，加描述字段 `level: scheme / family`，不新增 kind。**`BROADER` 不承担变体（已定，2026-10-03）**：变体与配置不建节点，作为结果列的变体标签记在实验中，见 [抽取原则](./extraction_principles.md) §2 |
 | `Task` | 研究任务 | 沿用 | `Task` | |
-| `Metric` | 指标 | 改写 | `Metric` | 归入 Concept；定义必须写明影响可比性的口径，如 @k 与计算方式（D2） |
-| `Protocol` | 评测协议或核验标准 | 新增 | 写在 Experiment 描述中 | 定义及修订有明确引用；一次实验实际采用的参数留在 Content 中（§3.4） |
+| `Metric` | 指标 | 首版不建（2026-10-04） | `Metric` | 指标在实验描述中说明，按锚点读原文。依据：LTSF 语料中几乎每个实验都测 MSE / MAE，按指标定位没有区分度；数值不入库后 `direction` 也无处可用；指标口径的可比性由 Agent 读原文判断。语料跨领域、按指标发现实验成为真实需求时再建。原设计：归入 Concept；定义必须写明影响可比性的口径，如 @k 与计算方式（D2） |
+| `Protocol` | 评测协议或核验标准 | 新增 | 写在 Experiment 描述中 | 定义及修订有明确引用；一次实验实际采用的参数不入库，按锚点读原文（"定位"一节） |
 | `Issue` | 研究问题 | 沿用 | `Issue` | 归类待 Q6 |
 | `Proposition` | 跨来源的共同命题 | 改写 | `ClaimConcept` | 改名；归类待 Q6 |
 
 ### 3.2 Property
 
-Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述型。两者的检索字段不同，这正是 Q6 的来源。
+Method、Task、Protocol 是术语型，Issue、Proposition 是陈述型。两者的检索字段不同，这正是 Q6 的来源。
 
 | Property | 适用 | 检索面 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -173,7 +204,7 @@ Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述�
 | `scheme_ref` | 术语型 | 过滤 | 重审 | 外部定义体系（如某个任务分类表）。当前没有外部体系，倾向首版不设 |
 | `text` | 陈述型 | 全文 / 向量 | 沿用 | 措辞中立，保留范围限定（v1 规则） |
 | `description` | Issue | 否 | 沿用 | 争议所在与判断条件 |
-| `direction` | Metric | 否 | 新增 | 越大越好或越小越好。**已定（2026-10-02）**：放在 Metric 上，只定义一次；结果行仅在与 Metric 不一致时填写，读取时以行上的值为准。原则：能在定义层确定的，不让每次抽取重复判断 |
+| `direction` | Metric | 否 | 随 Metric 首版不建（2026-10-04） | 越大越好或越小越好。**已定（2026-10-02）**：放在 Metric 上，只定义一次。原则：能在定义层确定的，不让每次抽取重复判断 |
 | `anchor` | Method、Metric | — | 退役 | 定义出处改由可选的 `FROM` 表达；定义由 Agent 归纳时没有单一来源 |
 
 ## 4. Content：来源化内容
@@ -184,7 +215,7 @@ Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述�
 | --- | --- | --- | --- | --- |
 | `Claim` | 论文作者的主张 | 沿用 | `Claim` | 作者，经抽取 |
 | `Experiment` | 论文报告的一项实验 | 沿用 | `Experiment` | 作者，经抽取 |
-| `Usage` | 论文对资源的描述或使用经验 | 重审 | `ResourceRecord` | 作者，经抽取；Q5 |
+| `Usage` | 论文对资源的描述或使用经验；若保留，只存概述与锚点，配置与原文说明按锚点读（2026-10-04） | 重审 | `ResourceRecord` | 作者，经抽取；Q5 |
 | `Observation` | 一次第一手检查 | 沿用 | `Observation` | 检查执行者 |
 | `Assessment` | Agent 对指定条件的判断 | 候选 | 无 | Agent，经确认；Q1 |
 | `Contribution` | 论文自述的贡献 | 重审 | `Contribution` | 作者，经抽取；Q5 |
@@ -197,9 +228,9 @@ Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述�
 | --- | --- | --- | --- | --- |
 | `text` | 全部 | 全文 / 向量 | 改写 | 可独立理解的内容描述。v1 中 Claim、Contribution 用 `text`，Experiment、ResourceRecord、Observation 用 `description`；v2 统一为 `text`，使 Content 类内检索字段一致。Experiment 的 `text` 是一组实验的描述：目的、设计、论文声称的结论，不写数值（[抽取原则](./extraction_principles.md) §4） |
 | `source_refs`（`FROM`） | 除 Observation、Assessment | 限制条件 | 改写 | 见第 1 节 |
-| `setting` | Experiment | 否 | 首版不用（2026-10-03） | 条件复述不入库，条件由 Agent 按锚点读原文判断，见 4.4 |
+| `setting` | Experiment | — | 退役（2026-10-04；2026-10-03 起首版不用） | 条件与超参数是锚点能直接给出的内容，不入库（"定位"一节）；由 Agent 按锚点读原文判断，见 4.4 |
 | `anchors`、`exp_key` | Experiment | 精确 | 新增（2026-10-03） | `anchors`：该组实验涉及的表、图锚点列表（如 `S4.T3`、`A1.T8`），第一个为主锚点；`exp_key = <论文 id>::<主锚点>` 是自然键。全部行范围（含正文）在 `FROM.locators` |
-| `granularity` | Experiment | 否 | 重审 | `report / row` 是返回项的属性（§4.1）。有 ResultUnit 子节点即 row，没有即 report，不必另存；只有要区分"尚未抽取"与"原文只有报告级"时，才另存 `result_extraction: none / report / row` |
+| `granularity` | Experiment | — | 退役（2026-10-04） | 原用于区分报告级与行级结果；ResultUnit 退役后结果只到实验级，不再区分 |
 | `check_level` | Observation | 过滤 | 改写 | 即 v1 的 `kind`（repo_inspection / execution / reproduction）。v2 中 `kind` 已指类内类型，**已定（2026-10-02）**改名 |
 | `observed_at` | Observation | 过滤 | 沿用 | |
 | `target` | Observation | — | 改写 | 改为 `OBSERVES` 指向资源，commit 等精确版本写在 `OBSERVES.version` 上（2.3） |
@@ -207,31 +238,13 @@ Method、Task、Metric、Protocol 是术语型，Issue、Proposition 是陈述�
 | `evidence` | Observation | 否 | 沿用 | 检查日志或产物路径，作用相当于 source_refs，但材料不是论文 |
 | `condition_id`、`value`、`origin`、`rule_ref` / `call_id`、`rationale`、`made_at`、`validity` | Assessment | `condition_id` 精确 | 候选 | 即持久化的 `PredRow`：`value` 取 T / F / U，`origin` 取 rule / agent，`validity` 取 valid / stale。被判断对象与依据用关系表达（6.2.5），依据必须固定到 `{id, revision}` |
 
-### 4.3 ResultUnit：结果表的一行（已定，2026-10-02；首版不用，2026-10-03）
+### 4.3 ResultUnit（退役，2026-10-04）
 
-> **首版不用（2026-10-03）。** 首版不存数值：Experiment 按研究问题分组，只存描述、锚点与参与关系，比较时按锚点读取（[抽取原则](./extraction_principles.md) §4）。ResultUnit 保留为精度上限与日后对照的升级选项；行级入库的实现见提交 `f95631b`。下文为当时的设计。
-
-D1 规定结果精度上限为表格行，行键为 `(被测对象 ref, 切分或版本 ref, 指标 ref)`，附 value、unit、direction 和表格行锚点。ResultUnit 是这一行的物理表示，属于 Experiment 视图的组成部分。
-
-```cypher
-(e:Content:Experiment)-[:HAS_RESULT]->(r:ResultUnit {value: "45.3", value_num: 45.3, unit: "%"})
-(r)-[:EVALUATES {role: "target"}]->(:Concept:Method)
-(r)-[:USES {role: "evaluation_data"}]->(:Entity:Split)
-(r)-[:MEASURED_BY]->(:Concept:Metric)
-(r)-[:FROM {material_ref: "<material_id>", locators: ["<实验结果::start:end>"]}]->(:Entity:Paper)
-```
-
-| 事项 | 选项 | 决定 |
-| --- | --- | --- |
-| 行键的三条边 | 复用 `EVALUATES / USES / MEASURED_BY`，或另起 `OF_SUBJECT / ON_DATA / BY_METRIC` | 复用：Experiments 的模式在报告级与行级同构，角色语义不变。代价是同一 Type 有两种起点，查询须写明 Label |
-| 是否带 `Content` 主 Label | 带，或只带 `ResultUnit` | 只带 `ResultUnit`：它不单独作为语义对象检索，避免 Content 全文检索命中结果行（§3.3"物理中间节点不自动成为语义对象"） |
-| `value` 的类型 | 原文字符串，或数值 | 两者都存：`value` 保留原文（如 `45.3±0.2`、`18.7†`），`value_num` 存解析后的数值，解析失败时留空 |
-
-**数值比较的回退规则。** 规则默认先比较 `value_num`，但只在条件理想时输出 T / F：所有可比性条件为 T、两行 `value_num` 均非空、单位与 direction 一致。任一项不满足，规则输出 `value=U, origin=rule`，按既有 U 路由交给 $A_{\text{pred}}$，由 Agent 读取原文 `value` 及其标记、脚注再判断。数值比较是可比性检查之后的最后一步，不替代它。
+ResultUnit 曾是结果表一行的物理表示（2026-10-02 定）：D1 规定结果精度上限为表格行，行键为 `(被测对象 ref, 切分或版本 ref, 指标 ref)`，附数值、单位、方向与行锚点，由 `HAS_RESULT` 挂在 Experiment 下。2026-10-03 起首版不用；2026-10-04 按"定位"一节退役，D1 随之撤销：数值与行级对应都是锚点能直接给出的内容，结果只到实验这一级，比较时由 Agent 按锚点读原文。原设计见提交 `291375a` 中本文 4.3，行级入库的实现见提交 `f95631b`。
 
 ### 4.4 Experiment 的可比性条件哪些进入结构（已定，2026-10-02；首版修订，2026-10-03）
 
-> **首版修订（2026-10-03）。** 第一个 I3 实例试跑后，首版只把**数据集与指标**作为参与关系存入结构（`USES`、`MEASURED_BY`），用于定位实验；切分约定 `cond_split`、版本与其余条件都不入库，由 Agent 按锚点读原文判断（[抽取原则](./extraction_principles.md) §4）。下表为 2026-10-02 的设计，保留为条件重新进入结构时的方案；其中"规则即可判定"的各项首版不运行。
+> **首版修订（2026-10-03）。** 第一个 I3 实例试跑后，首版只把**数据集与指标**作为参与关系存入结构（`USES`、`MEASURED_BY`），用于定位实验；切分约定 `cond_split`、版本与其余条件都不入库，由 Agent 按锚点读原文判断（[抽取原则](./extraction_principles.md) §4）。2026-10-04 起指标也不入结构（Metric 首版不建，3.1），只剩数据集。下表为 2026-10-02 的设计，保留为条件重新进入结构时的方案；其中"规则即可判定"的各项首版不运行。
 
 D2 把四项可比性条件放进领域配置。它们在图中有不同的去处：
 
@@ -242,7 +255,7 @@ D2 把四项可比性条件放进领域配置。它们在图中有不同的去�
 | 候选集或语料 | `USES {role: "retrieval_corpus"}` 指向 Dataset | 已定：新增 USES role，规则即可判定 |
 | 是否重排序 | `setting` 文本 | 已定：首版由 $A_{\text{pred}}$ 判断；I3 实例显示规则可以决定时再提升 |
 
-进入结构的条件由规则判定，留在文本中的交给 Agent。这决定主张 B 的一项测量（规则与 Agent 各判定多少比较条件），而进入结构的抽取成本计入主张 A，实例中两边同时记录。`setting` 保留为异构描述字段，存其余超参数。
+进入结构的条件由规则判定，留在文本中的交给 Agent。这决定主张 B 的一项测量（规则与 Agent 各判定多少比较条件），而进入结构的抽取成本计入主张 A，实例中两边同时记录。`setting` 已退役（4.2），超参数不入库。
 
 ## 5. 系统记录
 
@@ -284,9 +297,9 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | --- | --- | --- | --- |
 | **Entity** | `VERSION_OF`、`PART_OF`、`DERIVED_FROM`、`CITES`；重审：`INTRODUCES` | `IMPLEMENTS`、`FOR_TASK`；重审：`HAS_METHOD` | 无（方向约定） |
 | **Concept** | 无；重审：`PRODUCES` | `BROADER`、`HAS_PART`、`ADDRESSES`、`DERIVED_FROM`、`OVERLAPS_WITH`、`REFINES`、`IMPLIES`、`CONTRADICTS` | 无（方向约定） |
-| **Content** | `FROM`、`ABOUT`、`USES`、`EVALUATES`、`OBSERVES` | `ABOUT`、`EVALUATES`、`MEASURED_BY`、`USES_PROTOCOL`、`ON_TASK`、`EXPRESSES`、`RESPONDS_TO` | `SUPPORTED_BY`、`SUPPORTS`、`CHALLENGES`、`QUALIFIES`、`CHECKS`；候选：`SUPERSEDES` |
+| **Content** | `FROM`、`ABOUT`、`USES`、`EVALUATES`、`OBSERVES` | `ABOUT`、`EVALUATES`、`MEASURED_BY`（首版不用）、`USES_PROTOCOL`、`ON_TASK`、`EXPRESSES`、`RESPONDS_TO` | `SUPPORTED_BY`、`SUPPORTS`、`CHALLENGES`、`QUALIFIES`、`CHECKS`；候选：`SUPERSEDES` |
 
-此外：`HAS_RESULT` 从 Experiment 指向组成节点 ResultUnit；`ASSESSES`、`BASED_ON`（候选）从 Assessment 指向任意类别；`MERGED_INTO`（候选）连接同类对象。
+此外：`ASSESSES`、`BASED_ON`（候选）从 Assessment 指向任意类别；`MERGED_INTO`（候选）连接同类对象。
 
 从矩阵可以读出两点：
 
@@ -303,12 +316,11 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | --- | --- | --- | --- | --- | --- |
 | `FROM` | Content → Entity | `Content.source_refs` | `material_ref`、`locators` | 改写 | 取代 v1 的来源类关系及 Node 上的 `anchor` |
 | `ABOUT` | Content → Entity / Concept | `Content.about`、`Entity.described_by` | | 沿用 | 讨论关系不表示支持；v1 的 `DESCRIBES` 并入 |
-| `EVALUATES` | Experiment / ResultUnit → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version` | 沿用 | Q7：立即回补 role，§6.1 依赖它。2026-10-03 曾加 `variants`、`origin`、`origin_basis`、`origin_from`，同日试跑后退出首版：变体在实验描述中说明，结果引自哪篇论文由 `CITES` 承担（[抽取原则](./extraction_principles.md) §2、§5） |
-| `USES` | Experiment / ResultUnit → Entity | `Content.participants` | `role`：training_data / evaluation_data / analysis_input / tooling / retrieval_corpus（2026-10-02 新增）；`version` | 沿用 | role 缺失时进入 `diagnostics.role_missing` |
-| `MEASURED_BY` | Experiment / ResultUnit → Metric | `Content.participants` | | 沿用 | |
-| `USES_PROTOCOL` | Experiment / ResultUnit / Observation → Protocol | `Content.protocol` | | 新增 | 实际参数留在 Content 中 |
+| `EVALUATES` | Experiment → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填）、`version` | 沿用 | Q7：立即回补 role，§6.1 依赖它。2026-10-03 曾加 `variants`、`origin`、`origin_basis`、`origin_from`，同日试跑后退出首版：变体在实验描述中说明，结果引自哪篇论文由 `CITES` 承担（[抽取原则](./extraction_principles.md) §2、§5） |
+| `USES` | Experiment → Entity | `Content.participants` | `role`：training_data / evaluation_data / analysis_input / tooling / retrieval_corpus（2026-10-02 新增）；`version` | 沿用 | role 缺失时进入 `diagnostics.role_missing` |
+| `MEASURED_BY` | Experiment → Metric | `Content.participants` | | 首版不用（2026-10-04） | 随 Metric（3.1） |
+| `USES_PROTOCOL` | Experiment / Observation → Protocol | `Content.protocol` | | 新增 | 实际参数不入库，按锚点读原文 |
 | `ON_TASK` | Experiment → Task | | | 沿用 | Q7：立即回补 |
-| `HAS_RESULT` | Experiment → ResultUnit | 组成 | | 新增 | 见 4.3 |
 
 #### 6.2.2 主张、依据与核查
 
@@ -385,11 +397,11 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 3 | 精确键用 `NameKey` 还是 `aliases` 列表 | **已定（2026-10-02）**：`NameKey`，对象上不存列表 | 第 5 节 |
 | 4 | Paper `title` → `name`；`identifiers` 的存储；Paper `description` | **已定（2026-10-02）**：改名；字符串列表；description 存摘要，任务相关理解写入 note | 2.2 |
 | 5 | 版本节点的建立时机与命名；版本未知时 Split 挂在哪里 | **已定（2026-10-02）**：修订级版本默认记在使用边的 `version` 上，只在版本自身需要挂结构时建节点；未写版本归原实体 | 2.3 |
-| 6 | ResultUnit 的边名、Label、`value` 类型 | **已定（2026-10-02）**：复用参与边；只带 `ResultUnit`；原文与数值都存，数值比较不理想时回退原文交 Agent。首版不用（2026-10-03）：入库为报告级 | 4.3 |
-| 7 | 可比性条件哪些进入结构 | **已定（2026-10-02）**：版本、切分、指标、语料进入结构；重排序留在文本。**首版修订（2026-10-03）**：只有数据集与指标作为参与关系入库，其余条件由 Agent 读原文 | 4.4 |
+| 6 | ResultUnit 的边名、Label、`value` 类型 | **已定（2026-10-02）**：复用参与边；只带 `ResultUnit`；原文与数值都存，数值比较不理想时回退原文交 Agent。首版不用（2026-10-03）：入库为报告级。**退役（2026-10-04）**，D1 撤销 | 4.3 |
+| 7 | 可比性条件哪些进入结构 | **已定（2026-10-02）**：版本、切分、指标、语料进入结构；重排序留在文本。**首版修订（2026-10-03）**：只有数据集与指标作为参与关系入库，其余条件由 Agent 读原文；2026-10-04 起指标也不入库 | 4.4 |
 | 8 | Method 与 MethodConcept 合并 | **已定（2026-10-02）**：合并，用 `BROADER`；`BROADER` 不承担变体（2026-10-03，见 [抽取原则](./extraction_principles.md) §2） | 3.1 |
 | 9 | `Observation.kind` 改名为 `check_level` | **已定（2026-10-02）** | 4.2 |
-| 10 | `Metric.direction` 的位置 | **已定（2026-10-02）**：放在 Metric 上 | 3.2 |
+| 10 | `Metric.direction` 的位置 | **已定（2026-10-02）**：放在 Metric 上。随 Metric 首版不建（2026-10-04） | 3.2 |
 | 11 | Usage、Contribution、Assessment 的去留 | 等 Q5、Q1 | 4.1 |
 | 12 | `revision`、`status`、`SUPERSEDES` | 等 Q2 | 第 1 节、6.2.5 |
 | 13 | Issue、Proposition 的归类 | 等 Q6，用 I4、I5 实例裁决 | 3.1 |
@@ -398,4 +410,4 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 | 16 | 唯一命名空间标识的后端约束 | 倾向先保持事务内复查；需要后端保证时仿 NameKey 建键节点 | 2.4 |
 | 17 | 语义候选的阈值或"可能不存在"提示 | 暂不设；等真实查询中外部否定的比例出来再定 | `intents_decompose.md` §4.1 |
 
-I3 实例只涉及 Paper、Dataset、Split、Method、Metric、Experiment、ResultUnit 及其参与边，第 11–14、16、17 项不阻塞它；第 15 项在论文入库前必须定。
+I3 实例只涉及 Paper、Dataset、Split、Method、Experiment 及其参与边，第 11–14、16、17 项不阻塞它；第 15 项在论文入库前必须定。
