@@ -1,6 +1,6 @@
 # Commit 契约：论文增量的入库
 
-> **状态：** 已定（2026-10-03），首版为报告级。E09 已实现 compile（`form.py`）、dry_run 与 apply（`operators/commit/paper.py`），DLinear 与 PatchTST 已按此正式入库（`make ingest`：两批，22 个实验、5 条 `CITES`）；论文增量中的关系目前只实现了 `CITES`。行级（ResultUnit）版本见提交 `f95631b`。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
+> **状态：** 已定（2026-10-03）；同日第一个 I3 实例试跑后修订为 paper-form-v3：实验按研究问题分组，只存描述、锚点与参与关系（[抽取原则](./extraction_principles.md) §4、§5）。E09 的 compile（`form.py`）、dry_run 与 apply（`operators/commit/paper.py`）实现的是上一版 paper-form-v2（每张结果表一个实验，带变体、条件、疑点与逐项来源性质），DLinear 与 PatchTST 曾按 v2 入库（提交 `781832d`：22 个实验、5 条 `CITES`），**待对齐到 v3 后重新入库**；论文增量中的关系只实现了 `CITES`。行级（ResultUnit）版本见提交 `f95631b`。规定外部 Agent 写好的入库表单如何编译成增量、由 `Commit` 检查并写入；抽什么、抽到多深见 [抽取原则](./extraction_principles.md)。对应 [Graph Model V2](./graph_model_v2.md) §7 第 15 项与 [Workload 拆解](./intents_decompose.md) §5 写路径。种子入库是其中的特例，E09 已实现（`experiments/e09/src/e09/operators/commit.py`）。
 
 ## 1. 流程与职责
 
@@ -23,20 +23,20 @@
 - **跨批依赖**：靠提交顺序保证。引用的对象所在的批次尚未提交时，dry_run 报"引用无法解析"。
 - **边界**：中间件只做确定性检查与执行；同一性、称呼指向、冲突怎么处理由 Agent 判断（[研究顶层设计](./research_design_v2.md)）。
 
-## 2. 表单（paper-form-v2，报告级）
+## 2. 表单（paper-form-v3）
 
 | 字段 | 内容 |
 | --- | --- |
-| `form`、`domain` | 表单版本；领域配置名（如 `ltsf`，决定可用的实验级条件与切分约定） |
+| `form` | 表单版本 `paper-form-v3`。v2 的 `domain`（领域配置：实验级条件与切分约定）随条件退出结构而去掉 |
 | `material` | 材料路径与内容哈希 |
 | `paper` | 论文本身：`labels`、`properties`（name、identifiers、description） |
 | `refs` | 已有对象：`{mention, kind}`；或经确认的 `{id, printed?, register?}`，`register: true` 表示把 `printed` 注册为该对象的新 alias（笔误不注册） |
 | `objects` | 新对象：核心方法与桩节点（`stub: true`），带 `rejected`；被引论文只能是桩节点；补全桩节点用 `fill: {id 或 mention}` |
 | `relationships` | 论文表单只允许本文 → 被引论文的 `CITES`：`{from: paper, type: CITES, to: <Paper ref>, basis: [<定位>…], description?}`，选择性写入（[抽取原则](./extraction_principles.md) §8） |
-| `experiments` | 每张表一项：`anchor`、`section`、`lines`（表的行范围）、`task`、`text`、`setting`、`note`、`participants`（`subject`、`role`、`variants`、`origin`）、`data`、`metrics`、`conditions`、`condition_basis`；`origin` 可简写为取值，或写成 `{kind, basis, from}`，`from` 是被引论文的 ref |
+| `experiments` | 每个研究问题一项：`anchors`（表、图的锚点列表，第一个为主锚点）、`locators`（全部行范围 `<章节>::<start>:<end>`，含表、图与陈述设计和结论的正文）、`task`、`text`（实验描述）、`participants`（`subject`、`role`）、`data`、`metrics` |
 | `x-ingest` | `{committed_by, rounds}`：提交者与 dry_run 来回轮数，由入库入口读出写进批次记录（第 6 节） |
 
-实验、变体、来源性质、切分约定的写法见 [抽取原则](./extraction_principles.md) §2–§6。入库是报告级：只存实验与参与对象，数值留在原文。其余 `x-` 开头的键只作 YAML 复用；compile 忽略全部 `x-` 键。
+实验的分组与描述写法见 [抽取原则](./extraction_principles.md) §4；变体、条件、疑点与逐项来源性质都不进表单（§2、§5、§6），结果引自哪篇论文写在 `CITES` 的 `description` 中。数值留在原文。其余 `x-` 开头的键只作 YAML 复用；compile 忽略全部 `x-` 键。
 
 ## 3. 操作集
 
@@ -46,23 +46,24 @@
 | `register_name` | `NameKey` 与 `NAMES` |
 | `fill_stub` | 补全桩节点：**只填空字段**，去掉 `stub` |
 | `add_material` | `Material`（路径、内容哈希）与 `MATERIAL_OF` |
-| `add_experiment` | `Content:Experiment`，与 `FROM`、`ON_TASK`、`EVALUATES {role, variants, origin, origin_basis, origin_from}`、`USES {role: evaluation_data}`、`MEASURED_BY` |
+| `add_experiment` | `Content:Experiment`，与 `FROM {material_ref, locators}`、`ON_TASK`、`EVALUATES {role}`、`USES {role: evaluation_data}`、`MEASURED_BY` |
 | `link` | Entity / Concept 之间的关系；目前只实现 `CITES`，边上存 `source_refs`（`<material_id>::<定位>`）与 `description` |
 | `record_batch` | `IngestBatch` 系统记录（第 6 节） |
 
-`EVALUATES.origin_from` 存被引论文的 id。Experiment 上的属性：`exp_key`、`anchor`、`section`、`lines`、`text`、`setting`、`note`，领域配置声明的条件 `cond_<name>`（首版只有 `cond_split`）与其依据 `condition_basis`。
+Experiment 上的属性：`exp_key`、`anchors`、`text`。行范围只存在 `FROM.locators` 上。
 
 ## 4. 检查与返回
 
 | 阶段 | 检查 | 返回类别 |
 | --- | --- | --- |
-| compile | 表单结构与未知字段；主锚点在材料中、表的行范围不越界；条件已声明且合语法，切分约定须给依据；依据的定位在材料范围内；同一实验中被测对象不重复、至少一个 target；桩节点不写定义、非桩必须写；Paper 对象只能是桩节点；`rerun` / `cited` 必须给依据，`cited` 的出处 `from` 必须是 Paper，`from` 只用于 `cited` | **错误** |
-| compile | 关系只能是 `CITES`，起点是本文、终点是 Paper；`basis` 非空，且不能全部落在参考文献节内；每个 `cited` 出处都有对应的 `CITES` | **错误** |
-| compile | 表单里的方法名或变体标签、数据集与指标的称呼不在原文这张表的行范围内（新对象的 name 或任一 alias 出现即可） | **待确认** |
+| compile | 表单结构与未知字段；每个锚点都在材料中，且落在该实验某个 locator 的行范围内；locators 不越界；`text` 非空；同一实验中被测对象不重复、至少一个 target；各实验的主锚点不重复；桩节点不写定义、非桩必须写；Paper 对象只能是桩节点 | **错误** |
+| compile | 关系只能是 `CITES`，起点是本文、终点是 Paper；`basis` 非空，且不能全部落在参考文献节内 | **错误** |
+| compile | 表单里的方法名、数据集与指标的称呼不在该实验任一 locator 的行范围内（新对象的 name 或任一 alias 出现即可） | **待确认** |
+| compile | 实验描述中出现带小数的数值（抽取原则 §4：不转录数值） | **待确认** |
 | dry_run | 引用在 id / alias 级唯一命中 | 否则**待确认**（附候选） |
 | dry_run | 新对象的语义近邻全部列入 `rejected`；桩节点只走 id、alias 与名称词面通道 | 否则**待确认** |
 | dry_run | 新对象的精确键或唯一标识（如 arXiv 号）已被占用；新对象撞上已有桩节点（提示改用 `fill`） | **冲突** |
-| dry_run | 实验的自然键已存在：属性、任务与三类参与边都相同为不变，否则为冲突 | **不变** / **冲突** |
+| dry_run | 实验的自然键已存在：`anchors`、`text`、`FROM.locators`、任务与三类参与边都相同为不变，否则为冲突 | **不变** / **冲突** |
 | dry_run | `CITES` 的两端已在库中且边已存在：`source_refs` 与 `description` 都相同为不变，否则为冲突（`rel-changed`） | **不变** / **冲突** |
 
 三类阻塞项的处理方不同：**错误**由 Agent 改表单；**待确认**由 Agent 做语义判断；**冲突**是与库内状态矛盾，由外部决定（改为引用、`fill`、改名或交人工）。有任何一类时 apply 拒绝整批。
@@ -83,7 +84,7 @@
 
 每批一个 `IngestBatch` 系统记录，连到 Paper：
 
-- `coverage`：本批录入的表（主锚点列表）。同一论文多批的 coverage 取并集。查询时据此区分"原文没报告"与"没有录入"。
+- `coverage`：本批各实验的全部锚点（表、图）。同一论文多批的 coverage 取并集。查询时据此区分"原文没报告"与"没有录入"；抽取原则 §10 第 4 项的锚点覆盖检查也以它为准。
 - 解析统计：引用在各级的命中数、展示的语义候选数与否定数、dry_run 来回轮数——主张 A 的构建成本。
 - 写入统计：新建对象、实验与关系（`new_rels`）的数量。
 - 来回轮数与提交者取自表单的 `x-ingest`，由提交者如实填写；中间件的偶发故障（如语义查重通道失败后重跑）不计入轮数，在表单注释中说明。
