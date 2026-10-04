@@ -1,10 +1,10 @@
 # Graph Model V2
 
-> **状态：** 本文规定当前图模型及其工程映射；标为“待定”的项目不属于已确认实现要求。当前论文入库范围是 Paper、Method、Dataset、Benchmark、Task、Experiment、Claim、Contribution、来源与参与关系，以及选择性 `CITES`；Observation 与 Agent 提交的贡献、正反关系经增补表单写入。E09 的入库实现尚待对齐现行契约并重新入库验证，见 [Commit 契约](./commit_contract.md)。访问契约见 [Workload 拆解](./intents_decompose.md)。
+> **状态：** 本文规定当前图模型及其工程映射；标为“待定”的项目不属于已确认实现要求。当前论文入库范围是 Paper、Method、Dataset、Benchmark、Task、Experiment、Claim、Contribution、来源与参与关系，以及选择性 `CITES`；Observation 与 Agent 提交的贡献、正反关系经增补表单写入；Agent 算子每次调用的产物写为 Artifact（第 8 节）。E09 的入库代码已对齐论文表单与增补表单，尚待重新入库验证，见 [Commit 契约](./commit_contract.md)。算子契约见 [算子契约](./operators.md)，intent 与数据流见 [Workload 拆解](./intents_decompose.md)。
 
 `V2` 设计一个面向研究 Agent 的论文知识图：保存阅读后形成的索引（轻度提炼、原文锚点与关联），通过论文引用、共享方法、资源和命题连接不同论文，让后续研究能够查找、比较和复用已有经验。
 
-模型区分 `Entity`、`Concept`、`Content` 三类对象，以主 Label 表达类别、次级 Label 表达类内类型。类别与访问契约共同设计，其有效性需通过真实 workload 检验。
+模型区分四类节点：`Entity`、`Concept`、`Content` 来自阅读论文，以主 Label 表达类别、次级 Label 表达类内类型；`Artifact` 来自使用知识，是 Agent 算子产出的通用节点，不分类内类型（第 8 节）。类别与访问契约共同设计，其有效性需通过真实 workload 检验。
 
 采用 Neo4j 的 Labeled Property Graph 模型，统一使用 `Node`、`Relationship`、`Label`、`Type`、`Property` 描述。概念依据见 [Neo4j 图模型](https://neo4j.com/docs/getting-started/appendix/graphdb-concepts/)。
 
@@ -15,10 +15,11 @@ Graph Model
 │    ├── Entity     资源对象：Paper、Dataset、Benchmark、Code、Model、Tool
 │    ├── Concept    定义对象：Method、Task、Issue、Proposition
 │    ├── Content    来源化内容：Claim、Experiment、Contribution、Observation
+│    ├── Artifact   使用产物：Agent 算子每次调用的结果（通用节点，不分类内类型）
 │    └── 系统记录   NameKey、Material、IngestBatch（支撑解析与来源，不是语义对象）
 │
 ├── Relationship
-│    ├── 视角一：三类之间的关联（3 × 3 矩阵）
+│    ├── 视角一：四类之间的关联（4 × 4 矩阵）
 │    └── 视角二：完整关系清单（Type、端点、Property）
 ```
 
@@ -40,6 +41,7 @@ Graph Model
 | --- | --- | --- |
 | 轻度提炼 | 用自己的话写到足以判断"要不要去读这里"为止，不写到足以替代阅读 | Experiment 的 `text`（目的、设计、论文的主张，4.2）；Concept 的 `definition`（3.2） |
 | 阅读理解与评估 | 独立记录形成者、时间与依据 | Observation（4.5）；`note` 是对象上的备注与笔记 |
+| 使用产物 | Agent 使用知识时的抽取、概述、判断与整理结果，正文存为文档 | Artifact（第 8 节） |
 | 锚点 | 在原文哪里 | `FROM` 的 locators；Experiment 的 `anchors` |
 | 关联 | 和谁有关、以什么角色 | 参与边、`CITES`、概念之间的关系 |
 
@@ -56,7 +58,7 @@ Graph Model
 
 ## 0. 记法与状态标记
 
-- `Entity.Paper` 表示物理上的双 Label `(:Entity:Paper)`：主 Label 是类别，次级 Label 是类内 kind。语义对象恰好带一个主 Label 和一个次级 Label；系统记录只带自己的 Label。
+- `Entity.Paper` 表示物理上的双 Label `(:Entity:Paper)`：主 Label 是类别，次级 Label 是类内 kind。Entity、Concept、Content 的对象恰好带一个主 Label 和一个次级 Label；Artifact 与系统记录只带自己的 Label。
 - Cypher 片段只展示结构，属性值为示意。
 - 本文是工程方案，名词可以与设计文档不同：设计文档中的逻辑字段（如 `kind`、`aliases`、`source_refs`）在这里映射到具体的 Label、Node 或 Relationship，映射关系在对应条目中说明。
 - “已定”表示当前契约；“待定”表示尚需任务实例或讨论确定，不应据此扩大实现范围。
@@ -67,7 +69,7 @@ Graph Model
 | --- | --- | --- | --- |
 | `id` | 系统分配的无语义标识 | 已定 | 只定位记录，不证明对象同一性；引用即 `id`，不设修订号 |
 | `kind` | 类内类型 | 已定 | 只用次级 Label 存储，不另存属性；逻辑字段由 Label 投影 |
-| `family` | Entity / Concept / Content | 已定 | 由主 Label 表达，不另存 |
+| `family` | Entity / Concept / Content / Artifact | 已定 | 由主 Label 表达，不另存 |
 | `source_refs` | 来源引用 `{entity_ref, material_ref, locator}` | 已定 | 固定来源实体、材料版本与位置；存储方式见下 |
 | `note` | 对象上的备注与笔记 | 已定 | 使用提醒、消歧线索、引用线索或阅读笔记均可；不进检索面、没有独立修订。需要独立检索、引用和复用的阅读理解与评估写成 Observation。Experiment 不混入入库者的判断 |
 | `embedding` 等派生属性 | 系统写入 | 已定 | 不属于模型；入库时按 E09 现状计算，见第 5 节 |
@@ -104,7 +106,7 @@ Graph Model
 | Property | 适用 | 检索面 | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
 | `name` | 全部 | 精确键 | 已定 | Paper 与其他 Entity 均以 `name` 作为主称呼。精确键为 `(规范化 name/alias, type, kind, scope)`；`name` 留在对象上作主称呼，同时注册为一条 `NameKey` |
-| `aliases` | 全部 | 精确键 | 已定 | 写入时强制作用域内唯一，冲突拒绝。不在对象上存列表，存为 `NameKey`（第 5 节）；`Get` 由 NameKey 装配 aliases 供阅读 |
+| `aliases` | 全部 | 精确键 | 已定 | 写入时强制作用域内唯一，冲突拒绝。不在对象上存列表，存为 `NameKey`（第 5 节）；对象视图由 NameKey 装配 aliases 供阅读 |
 | `identifiers` | 全部 | 精确匹配 | 已定 | 逻辑结构 `{namespace, value}`。存为字符串列表 `"<namespace>:<value>"`，如 `"arxiv:2005.11401"`、`"url:https://github.com/zhouhaoyi/ETDataset"`；唯一性按命名空间声明，重复时的处理见 2.4 |
 | `description` | 全部 | 全文 / 向量 | 已定 | Paper 的 `description` 存摘要，其他资源存内容与用途介绍。需要持久复用的任务相关阅读理解写成 Observation（4.5） |
 | `year` | Paper | 否 | 已定 | 若 I1 需要按年份过滤，再提升进检索面 |
@@ -129,7 +131,7 @@ Graph Model
 id 级：   url = zhouhaoyi/ETDataset          → {ETT, ETTh1, ETTh2, ETTm1, ETTm2}
 别名级：  mention = "ETTh1", kind = Dataset  → {ETTh1}
 交集唯一  → status=resolved，match_trace 记录两级依据
-仍不唯一或交集为空 → 保留 ambiguous，交外部 A_pred
+仍不唯一或交集为空 → 保留 ambiguous，交 Agent 以 Filter 确认
 名称命中了其他对象（如 mention = "Weather"）→ 交集为空且另记 resolution=conflicting
 名称未注册 → 交集为空只是缺信息，不记冲突
 ```
@@ -198,11 +200,11 @@ Contribution 是检索论文的重要依据：经 `ABOUT` 连到它提出或改�
 
 一个 Experiment 对应论文结果部分中的一个研究问题，可以覆盖多张表、图和正文段落。附录对正文实验的补全并入同一组，不按数据集、指标或预测长度拆分。自然键使用论文 id 与主锚点，分组与覆盖规则见 [抽取原则](./extraction_principles.md) §4。
 
-`Experiments` 返回实验、参与对象、角色及材料位置。库内不存数值或结果行；外部 Agent 按锚点抽取临时结果行并保留条件与来源。同一实验内的共同参与只提供查找与配对线索，不建立行级对应。
+实验视图（经 `Search` 或 `Traverse` 取得）给出实验、参与对象、角色及材料位置。库内不存数值或结果行；Agent 按锚点读原文，经 `Extract` 取得结果行并保留条件与来源，产物为 Artifact。同一实验内的共同参与只提供查找与配对线索，不建立行级对应。
 
 ### 4.4 实验条件与可比性
 
-当前论文表单只记录方法及其 target / baseline 角色、数据集与任务。指标在必要时写入实验描述，不建 Metric 节点或指标参与边，也不作为 `Experiments` 的参数。
+当前论文表单只记录方法及其 target / baseline 角色、数据集与任务。指标在必要时写入实验描述，不建 Metric 节点或指标参与边，也不作为 `Search` 的结构条件。
 
 数据版本、切分、回看窗口、预测长度、评测协议、指标口径等具体条件由 Agent 读原文取得和比较。Benchmark 自身规定的评测规则随其描述与定义锚点保存；当前论文表单不结构化写入实验条件。条件相同、可比、同源等结论不能由共同实验或共享数据集推出。
 
@@ -217,7 +219,7 @@ Observation 保存阅读者或 Agent 自己形成的内容，包括对单篇论�
 - **对象**：经 `ABOUT` 关联论文、方法、实验、资源或其他 Content；比较可关联多个对象，读取时保留完整对象集合，不能拆成对每个对象独立成立的判断。
 - **依据**：材料位置经 `FROM` 保存；依赖的其他记录经 `ABOUT` 关联并在 `text` 中说明。`ABOUT` 只表达对象，不自动表示证据支持。
 
-`A_map` 与 `A_pred` 的输出默认是任务变量。外部确认需要积累的内容后，才经 `Commit` 的增补表单显式写入（[Commit 契约](./commit_contract.md) §2.2）；不自动保存每次中间判断，也不要求 Observation 采用结构化的 T / F / U 判断形态。Content 不原地修改。读取已有 Observation 只取得一份有依据的记录，是否适用于新任务由外部判断。
+Agent 算子（`Extract`、`Check`、`Verify` 等）每次调用的产物自动写为 Artifact（第 8 节），是未经审定的工作痕迹。需要长期积累的理解与结论，由提交者经 `Commit` 的增补表单显式写成 Observation（[Commit 契约](./commit_contract.md) §2.2）：可经 `ABOUT` 关联相关的 Artifact，以 Artifact 文档的行范围为依据。不要求 Observation 采用结构化的 T / F / U 判断形态。Content 不原地修改。读取已有 Observation 只取得一份有依据的记录，是否适用于新任务由外部判断。
 
 ## 5. 系统记录
 
@@ -226,21 +228,21 @@ Observation 保存阅读者或 Agent 自己形成的内容，包括对单篇论�
 | Label | 作用 | 状态 | Property 与关系 |
 | --- | --- | --- | --- |
 | `NameKey` | 精确键注册表 | 已定 | `key`（规范化名称、kind、scope 拼成的单个字符串，带唯一约束）、`normalized`、`raw`、`kind`、`scope`（global 或父对象 id）、`normalizer_ref`（属性不能存 map，编码为字符串，如 `name-key-v1@unicode-15.0.0`）、`status: active / ambiguous`、注册来源与提交者（`registered_from`、`registered_by`）；`(:NameKey)-[:NAMES]->(对象)` |
-| `Material` | 固定版本的材料 | 已定 | `path`、`format`、`content_hash`、`derived_from`（如原 PDF）、`created_at`；`(:Material)-[:MATERIAL_OF]->(:Entity:Paper)`；`FROM.material_ref` 引用其 id |
+| `Material` | 固定版本的材料 | 已定 | `path`、`format`、`content_hash`、`derived_from`（如原 PDF）、`created_at`；论文原文 `(:Material)-[:MATERIAL_OF]->(:Entity:Paper)`，Artifact 文档 `(:Material)-[:MATERIAL_OF]->(:Artifact)`；`FROM.material_ref` 与 `USED.material_ref` 引用其 id |
 | `IngestBatch` | 论文入库批次 | 已定 | 锚点覆盖、解析与写入统计、表单和材料哈希、提交者与时间；连到 Paper，见 [Commit 契约](./commit_contract.md) §6 |
 
 **为什么用 `NameKey`，而不是 `aliases` 列表。** 每个 alias 是一条带属性的注册记录。
 
 - 精确键要求写入时唯一。后端唯一约束作用于整个属性值，而不作用于列表元素；`NameKey.key` 是单个字符串，唯一性可以交给数据库约束保证。
 - `intents_decompose.md` §3.2 要求原字符串与 `normalizer_ref` 随注册记录保存，冲突键还要能单独标为 `ambiguous`。这些都是"每个键"的属性，放不进字符串列表。
-- 对象上不另存 `aliases` 列表，避免两份副本需要同步；`Get` 由 `NAMES` 装配 aliases 供 Agent 阅读。
+- 对象上不另存 `aliases` 列表，避免两份副本需要同步；对象视图由 `NAMES` 装配 aliases 供 Agent 阅读。
 
 **对算子的影响。** `Resolve` 的名称级解析查询如下；ambiguous 状态与 `normalizer_ref` 可以直接写入 match_trace。另外两个检索约束见 `intents_decompose.md` §6.2：
 
 - **名称词面通道：** 语义阶段的名称词面通道查询 NameKey 的 `raw` 全文索引，因为对象上没有 aliases。
 - **向量失效：** 向量的输入文本含由 NameKey 装配的 alias，所以注册或撤销 alias 会使该对象的派生向量失效。
 
-向量（`embedding`、`embedding_key`）作为检索派生属性存在对象与带描述的关系上，不属于内容属性。所有自由文本（Entity 的 `description`、Concept 的 `definition`、Content 的 `text`、关系的 `description`）都在入库时建向量，不计成本；如何使用后续再定。
+向量（`embedding`、`embedding_key`）作为检索派生属性存在对象与带描述的关系上，不属于内容属性。所有自由文本（Entity 的 `description`、Concept 的 `definition`、Content 的 `text`、Artifact 的 `title` 与 `abs`、关系的 `description`）都在写入时建向量，不计成本；如何使用后续再定。
 
 ```cypher
 MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
@@ -250,17 +252,18 @@ MATCH (k:NameKey {key: $key})-[:NAMES]->(n)
 
 ## 6. Relationship
 
-方向约定：**Content 指向它的来源、讨论对象和参与对象；Entity 与 Concept 不指向 Content。**
+方向约定：**Content 指向它的来源、讨论对象和参与对象；Artifact 指向它用到的节点；Entity 与 Concept 不指向 Content 或 Artifact。**
 
-### 6.1 视角一：三类之间的关联
+### 6.1 视角一：四类之间的关联
 
 行为起点，列为终点。
 
-| 起点 \ 终点 | Entity | Concept | Content |
-| --- | --- | --- | --- |
-| **Entity** | `PART_OF`、`DERIVED_FROM`、`CITES`、`FROM`（Benchmark 定义出处） | `IMPLEMENTS`、`FOR_TASK` | 无（方向约定） |
-| **Concept** | 可选 `FROM`（定义出处） | `BROADER`、`HAS_PART`、`ADDRESSES`、`DERIVED_FROM`、`OVERLAPS_WITH`、`SUPPORTS`、`OPPOSES` | 无（方向约定） |
-| **Content** | `FROM`、`ABOUT`、`USES`、`EVALUATES`、`EVALUATED_ON` | `ABOUT`、`EVALUATES`、`ON_TASK` | `ABOUT`、`SUPPORTED_BY`、`SUPPORTS`、`OPPOSES` |
+| 起点 \ 终点 | Entity | Concept | Content | Artifact |
+| --- | --- | --- | --- | --- |
+| **Entity** | `PART_OF`、`DERIVED_FROM`、`CITES`、`FROM`（Benchmark 定义出处） | `IMPLEMENTS`、`FOR_TASK` | 无（方向约定） | 无 |
+| **Concept** | 可选 `FROM`（定义出处） | `BROADER`、`HAS_PART`、`ADDRESSES`、`DERIVED_FROM`、`OVERLAPS_WITH`、`SUPPORTS`、`OPPOSES` | 无（方向约定） | 无 |
+| **Content** | `FROM`、`ABOUT`、`USES`、`EVALUATES`、`EVALUATED_ON` | `ABOUT`、`EVALUATES`、`ON_TASK` | `ABOUT`、`SUPPORTED_BY`、`SUPPORTS`、`OPPOSES` | `ABOUT`（Observation 关联 Artifact）、`FROM`（以 Artifact 文档为依据） |
+| **Artifact** | `USED` | `USED` | `USED` | `USED` |
 
 Observation 的对象关联与依据表达见 4.5。
 
@@ -268,6 +271,7 @@ Observation 的对象关联与依据表达见 4.5。
 
 - Entity 与 Concept 之间只有少量直连（实现、任务），论文形成的理解基本都经 Content 连接到对象。这与主张 A"复用的是阅读理解"一致。
 - 论文与其提出的方法之间没有直连，经 Contribution 的 `ABOUT` 表达。
+- Artifact 只有一种出边 `USED`，不参与任何语义关系；前三类节点不指向 Artifact，只有 Observation 在提升工作产物时关联它（4.5）。
 
 ### 6.2 视角二：完整关系清单
 
@@ -277,8 +281,8 @@ Observation 的对象关联与依据表达见 4.5。
 
 | Type | 端点 | 逻辑角色 | Property | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `FROM` | Content / 有明确出处的 Concept / Benchmark → Entity | `source_refs` | `material_ref`、`locators` | 已定 | 固定材料版本与原文位置 |
-| `ABOUT` | Content → Entity / Concept / Content | `Content.about`、对象的 `described_by` | | 已定 | 讨论关系不表示支持。Observation 经它关联理解或评估的对象；关联多个对象时读取保留完整对象集合，不能拆成对每个对象独立成立的判断 |
+| `FROM` | Content / 有明确出处的 Concept / Benchmark → Entity；Observation → Artifact | `source_refs` | `material_ref`、`locators` | 已定 | 固定材料版本与原文位置；终点是材料所属的节点（论文或 Artifact） |
+| `ABOUT` | Content → Entity / Concept / Content；Observation → Artifact | `Content.about`、对象的 `described_by` | | 已定 | 讨论关系不表示支持。Observation 经它关联理解或评估的对象；关联多个对象时读取保留完整对象集合，不能拆成对每个对象独立成立的判断 |
 | `EVALUATES` | Experiment → Method、Model 等 | `Content.participants` | `role: target / baseline`（必填） | 已定 | 按角色定位被测对象；当前论文表单不写变体标签或逐项来源性质，结果依赖由 `CITES` 描述 |
 | `USES` | Experiment → Entity | `Content.participants` | `role`：training_data / evaluation_data / analysis_input / tooling / retrieval_corpus | 已定 | role 缺失时进入 `diagnostics.role_missing` |
 | `ON_TASK` | Experiment → Task | | | 已定 | 实验所属任务 |
@@ -318,7 +322,13 @@ Claim 与 Issue、Proposition 之间用 `ABOUT` 关联，不设专门关系。
 | Type | 端点 | Property | 状态 | 说明 |
 | --- | --- | --- | --- | --- |
 | `NAMES` | NameKey → Entity / Concept | | 已定 | 第 5 节 |
-| `MATERIAL_OF` | Material → Entity | | 已定 | 第 5 节 |
+| `MATERIAL_OF` | Material → Entity / Artifact | | 已定 | 第 5 节 |
+
+#### 6.2.6 使用产物
+
+| Type | 端点 | Property | 状态 | 说明 |
+| --- | --- | --- | --- | --- |
+| `USED` | Artifact → Entity / Concept / Content / Artifact | `role`（可选）；引用原文或文档行范围时带 `material_ref`、`locators` | 已定 | 产出时用到了它；不表示支持、讨论或同一（第 8 节） |
 
 ## 7. 实现范围与待定事项
 
@@ -326,11 +336,27 @@ Claim 与 Issue、Proposition 之间用 `ABOUT` 关联，不设专门关系。
 
 | 事项 | 当前状态 |
 | --- | --- |
-| 论文表单与入库 | 契约为 paper-form-v4（新增 Claim、Contribution 与 Benchmark 引用）；E09 尚待对齐代码并重新入库验证 |
-| 增补写入 | Observation、Agent 认为的贡献与正反关系经增补表单写入；E09 尚待实现 |
+| 论文表单与入库 | 契约为 paper-form-v4（新增 Claim、Contribution 与 Benchmark 引用）；E09 代码已对齐，尚待重新入库验证 |
+| 增补写入 | Observation、Agent 认为的贡献与正反关系经增补表单写入；E09 已实现，尚待真实数据验证 |
+| Artifact | 契约见第 8 节与 [算子契约](./operators.md) §4–§5；E09 尚待实现 |
 | 修订、撤回与合并 | 当前不做：引用即 `id`，内容变化按冲突拒绝，需要时清库重建 |
 | Proposition | 保留；名称待定 |
 | Concept 精炼与整理 | 日后必须增加专门的工具或算子，整理 Claim 与 Concept（含 Issue、Proposition）并建立正反关系；当前不实现 |
 | 唯一命名空间标识 | 当前由 Commit 在事务内复查；后端键节点方案待维护与并发需求确定 |
 | 语义候选阈值 | 当前不设；根据真实查询中的外部否定成本评估 |
-| 嵌入计算 | 按 E09 现状在入库时计算；所有自由文本都建向量（第 5 节），E09 尚待补上 Content 与关系描述 |
+| 嵌入计算 | 按 E09 现状在写入时计算；所有自由文本都建向量（第 5 节）。E09 已覆盖 Entity、Concept、Content 与关系描述，Artifact 待随其实现补上 |
+
+## 8. Artifact：使用产物
+
+Artifact 是第四类节点，记录 Agent 使用知识时做出来的东西：Agent 算子（`Extract`、`Summarize`、`Generate`、`Check`、`Verify`、`Filter`、`Rank`、`MatrixConstruct`）的每次调用产出一个 Artifact。前三类来自阅读论文，Artifact 来自使用。名称取自溯源模型 OPM 中的 Artifact（过程产出的不可变状态）。算子的行为与校验见 [算子契约](./operators.md) §4，本节只规定存储。
+
+| 项 | 规定 |
+| --- | --- |
+| Label | 只有主 Label `Artifact`，不分类内类型；产出它的算子记在 `op` |
+| Property | `id`（`art_<序号>`）、`op`、`title`、`abs`、`params`（调用参数，JSON 字符串）、`formed_by`、`formed_at`、`session`、`artifact_key`（幂等键） |
+| 关系 | 只有出边 `USED`（6.2.6）：指向用到的对象；引用原文或文档行范围时，指向材料所属的节点并在边上带 `material_ref`、`locators`；引用其他 Artifact 中的记录时，指向该 Artifact 并以 `role` 记录键 |
+| 文档 | 正文存为 Markdown 文档，登记为 `Material` 并经 `MATERIAL_OF` 连到 Artifact；头部只有 `title`、`nodes_used`、`abs`，正文结构按算子规定 |
+| 身份 | 不查重、不合并、只追加；相同 `artifact_key` 的写入视为重试；写入后不修改 |
+| 检索 | `title` 与 `abs` 进全文与向量检索；默认不出现在 Entity、Concept、Content 的检索结果中，需显式检索 Artifact |
+| 过期 | 读取时计算：用到的节点已不在、用到的材料文件哈希变化，或用到的 Artifact 本身过期，均标为可能过期；不存状态，不修改 |
+| 与 Observation | Artifact 是未经审定的工作痕迹；需要长期留存的结论经增补表单写成 Observation，`ABOUT` 指向该 Artifact、以其文档行范围为 `FROM` 依据（4.5） |

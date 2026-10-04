@@ -1,6 +1,6 @@
 # Commit 契约：论文增量的入库
 
-> **状态：** 本文是 paper-form-v4 与 supplement-form-v1 的现行入库契约：论文表单写入实验（按研究问题分组，只存描述、锚点和方法、数据、Benchmark、任务关联）、主张与自述贡献；增补表单写入 Observation、Agent 认为的贡献与正反关系。E09 已有 compile、dry_run 与 apply 能力，但尚待对齐本文并重新入库验证。抽取范围见 [抽取原则](./extraction_principles.md)，对象映射见 [Graph Model V2](./graph_model_v2.md)，访问与写入责任见 [Workload 拆解](./intents_decompose.md) §5。
+> **状态：** 本文是 paper-form-v4 与 supplement-form-v1 的现行入库契约：论文表单写入实验（按研究问题分组，只存描述、锚点和方法、数据、Benchmark、任务关联）、主张与自述贡献；增补表单写入 Observation、Agent 认为的贡献与正反关系。Agent 算子写 Artifact 时共用本文的提交机制（第 7 节）。E09 的 compile、dry_run 与 apply 已对齐本文，尚待重新入库验证。抽取范围见 [抽取原则](./extraction_principles.md)，对象映射见 [Graph Model V2](./graph_model_v2.md)，算子见 [算子契约](./operators.md)，intent 与数据流见 [Workload 拆解](./intents_decompose.md) §5。
 
 ## 1. 流程与职责
 
@@ -48,11 +48,15 @@
 | --- | --- |
 | `form` | `supplement-form-v1` |
 | `formed_by` | 形成者，整份表单共用，由提交的 Agent 填写；`formed_at` 由 apply 自动写入 |
-| `observations` | 每条：`text`、`about`（对象引用，至少一个）、`basis`（可选，`{material, locators}`，编译为 `FROM`） |
-| `contributions` | Agent 认为的贡献：`paper`（论文引用）、`text`、`about`、`basis`（可选）；编译为 `stated_by: agent`，经 `FROM` 连到该论文 |
-| `relationships` | 只允许 `SUPPORTS` / `OPPOSES`：`{from, type, to, description}`，端点同为 Claim 或同为 Proposition；编译为 `stated_by: agent` |
+| `refs` | 引用的已有对象：Entity、Concept 用 `{mention, kind}` 或 `{id}`；Content 与 Artifact 没有称呼，只能用 `{id}`；不写 `printed`、`register` |
+| `observations` | 每条：`text`、`about`（`refs` 中的引用，至少一个）、`basis`（可选，`{material: <材料路径>, locators}`，编译为 `FROM`） |
+| `contributions` | Agent 认为的贡献：`paper`（`refs` 中的 Paper 引用）、`text`、`about`、`basis`（可选）；编译为 `stated_by: agent`，经 `FROM` 连到该论文 |
+| `relationships` | 只允许 `SUPPORTS` / `OPPOSES`：`{from, type, to, description}`，端点为 `refs` 中同为 Claim 或同为 Proposition 的引用；编译为 `stated_by: agent` |
+| `x-ingest` | 同论文表单 |
 
-三段都可省略，只要有一段非空就能编译。增补表单不新建 Entity、Concept 对象，也不注册 alias；引用按 `refs` 的同一规则解析，对象必须已在库中。
+三段都可省略，只要有一段非空就能编译。增补表单不新建 Entity、Concept 对象，也不注册 alias；引用的对象必须已在库中。
+
+`basis` 的材料必须已入库：论文原文或 Artifact 文档。`FROM` 的终点是该材料所属的节点（论文或 Artifact），边上带 `material_ref` 与 `locators`。Agent 贡献的 `basis` 必须属于它所属的论文；没有 `basis` 时，贡献的 `FROM` 仍连到所属论文，边上不带定位。Observation 可经 `about` 关联 Artifact、以 Artifact 文档为 `basis`，这是把工作产物提升为长期记录的途径（[算子契约](./operators.md) §5.7）。
 
 ## 3. 操作集
 
@@ -78,15 +82,15 @@ Experiment 上的属性：`exp_key`、`anchors`、`text`；Claim、Contribution 
 | compile | 表单里的方法名与数据集的称呼不在该实验任一 locator 的行范围内（新对象的 name 或任一 alias 出现即可） | **待确认** |
 | compile | 实验描述中出现带小数的数值（抽取原则 §4：不转录数值） | **待确认** |
 | compile | 主张与贡献：`key` 本文内唯一，`text` 非空，locators 不越界，`supported_by` 指向本表单实验的主锚点 | **错误** |
-| compile | 增补表单：`formed_by` 非空，至少一段非空；Observation 的 `about` 非空；关系类型只能是 `SUPPORTS` / `OPPOSES`，`description` 非空 | **错误** |
+| compile | 增补表单：`formed_by` 非空，至少一段非空；Content 与 Artifact 只能用 `{id}` 引用；Observation 的 `about` 非空；`basis` 的材料存在、locators 不越界；关系类型只能是 `SUPPORTS` / `OPPOSES`，`description` 非空，两端同为 Claim 或同为 Proposition、不是同一个引用；同一表单内不重复写同一条记录或关系 | **错误** |
 | dry_run | 引用在 id / alias 级唯一命中 | 否则**待确认**（附候选） |
 | dry_run | `paper` 未按标识命中且未写 `fill` 时，按名称词面与语义通道列出相似的已有 Paper 节点（含桩节点）；确认为同一论文时改用 `fill` | 有相似节点时**待确认** |
-| dry_run | 正反关系的两端 kind 相同，且同为 Claim 或同为 Proposition | 否则**错误** |
+| dry_run | 增补表单 `basis` 的材料已入库且属于唯一一个节点；Agent 贡献的 `basis` 属于它所属的论文 | 否则**冲突**（`material-missing`、`basis-paper`） |
 | dry_run | 新对象的语义近邻全部列入 `rejected`；桩节点只走 id、alias 与名称词面通道 | 否则**待确认** |
 | dry_run | 新对象的精确键或唯一标识（如 arXiv 号）已被占用；新对象撞上已有桩节点（提示改用 `fill`） | **冲突** |
 | dry_run | 实验的自然键已存在：`anchors`、`text`、`FROM.locators`、`ON_TASK`、`EVALUATES` 与 `USES` 绑定都相同为不变，否则为冲突 | **不变** / **冲突** |
 | dry_run | `CITES` 的两端已在库中且边已存在：`source_refs` 与 `description` 都相同为不变，否则为冲突（`rel-changed`） | **不变** / **冲突** |
-| dry_run | Claim、Contribution 的自然键已存在：`text`、`FROM.locators` 与 `ABOUT`、`SUPPORTED_BY` 绑定都相同为不变，否则为冲突；Observation 与 Agent 贡献的 `formed_by`、`text` 与对象集合都相同为不变 | **不变** / **冲突** |
+| dry_run | Claim、Contribution 的自然键已存在：`text`、`FROM.locators` 与 `ABOUT`、`SUPPORTED_BY` 绑定都相同为不变，否则为冲突；Observation 与 Agent 贡献的 `formed_by`、`text` 与对象集合（贡献另加所属论文）都相同时，`FROM` 也相同为不变，否则为冲突；正反关系按起点、终点、类型与 `formed_by` 已存在时，`description` 相同为不变，否则为冲突 | **不变** / **冲突** |
 
 三类阻塞项的处理方不同：**错误**由 Agent 改表单；**待确认**由 Agent 做语义判断；**冲突**是与库内状态矛盾，由外部决定（改为引用、`fill`、改名或交人工）。有任何一类时 apply 拒绝整批。
 
@@ -97,7 +101,7 @@ Experiment 上的属性：`exp_key`、`anchors`、`text`；Claim、Contribution 
 | Experiment | `exp_key = <论文 id>::<主锚点>` |
 | `CITES` | 起点与终点的 id（不另存键，也不加约束） |
 | Claim、Contribution（`stated_by: paper`） | `content_key = <论文 id>::<kind>::<key>` |
-| Observation、Contribution（`stated_by: agent`） | 不设自然键；按 `formed_by`、`text` 与对象集合判重 |
+| Observation、Contribution（`stated_by: agent`） | 不设自然键；按 `formed_by`、`text` 与对象集合（贡献另加所属论文）判重 |
 | `SUPPORTS` / `OPPOSES` | 起点、终点、类型与 `formed_by` |
 
 - 同一表单重跑：全部为不变，不写入。写入中途失败时事务回滚，可直接重试。
@@ -113,9 +117,22 @@ Experiment 上的属性：`exp_key`、`anchors`、`text`；Claim、Contribution 
 - 解析统计：引用在各级的命中数、展示的语义候选数与否定数、dry_run 来回轮数——主张 A 的构建成本。
 - 写入统计：新建对象、实验与关系（`new_rels`）的数量。
 - 来回轮数与提交者取自表单的 `x-ingest`，由提交者如实填写；中间件的偶发故障（如语义查重通道失败后重跑）不计入轮数，在表单注释中说明。
-- 出处：表单与材料的内容哈希、提交者、时间。
+- 出处：表单的内容哈希（`form_hash`，两种表单都记）、论文表单的材料哈希、提交者、时间；增补表单另记 `formed_by`。
 
-## 7. 尚未覆盖
+## 7. Agent 算子的写入
+
+Agent 算子（[算子契约](./operators.md) §4）每次调用写一个 Artifact。它们不是 `Commit`，不经表单与 dry_run 循环，但使用本文的同一提交机制：
+
+| 环节 | 规定 |
+| --- | --- |
+| 校验 | 引用都在库中；正文中的引用属于声明的输入；参数与内容符合该算子的 schema；判断类每个单元恰有一条判断。任一不过则整次拒绝，返回与本文阻塞项同形的错误 `{rule, where, msg}` |
+| 写入 | 先写文档文件，再在单事务中写 Artifact 节点、`USED` 边、`Material` 与 `MATERIAL_OF` |
+| 复核 | 写后在同一事务内确认节点与边都在、文档哈希一致；不一致则回滚，文件作废 |
+| 幂等 | 相同 `artifact_key`（`op`、输入、参数、内容与形成者的哈希）视为重试，返回已有 Artifact，不重复写入 |
+| 向量 | 写入后补算 `title` 与 `abs` 的向量 |
+| 批次 | 不写 `IngestBatch`；形成者、时间与会话记在 Artifact 上 |
+
+## 8. 尚未覆盖
 
 - 修订、撤回、对象合并与拆分：当前不做，需要时清库重建。
 - 实验条件与数据切分：模型不表达切分与资源版本，条件按锚点读原文。
