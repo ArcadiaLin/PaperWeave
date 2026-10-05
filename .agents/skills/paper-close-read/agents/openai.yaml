@@ -1,4 +1,4 @@
 interface:
   display_name: "Paper Close Read"
   short_description: "Single-paper close reading with evidence maps, figures, and claim-level analysis"
-  default_prompt: "Use $paper-close-read to prepare a local paper, build an evidence map, and write a figure-rich close reading with detailed method, numbers, and claim-level empirical analysis."
+  default_prompt: "Use $paper-close-read to prepare a paper from an arXiv ID, a local PDF, or existing readable text; build an evidence map; and write a figure-rich close reading with detailed method, numbers, and claim-level empirical analysis."

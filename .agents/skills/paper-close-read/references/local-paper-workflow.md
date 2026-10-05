@@ -1,31 +1,33 @@
 # Local Paper Workflow
 
+本文件覆盖**本地 PDF 分支**的材料准备；arXiv 分支见 [arxiv-md-workflow.md](arxiv-md-workflow.md)，已有可读材料的分支见 SKILL.md。
+
 ## Goal
 
-把用户给的单篇本地论文，整理成一套可写、可插图、可追踪证据的工作目录，而不是直接对着 PDF 生写。
+把用户给的单篇本地论文 PDF，整理成一套可写、可插图、可追踪证据的工作目录，而不是直接对着 PDF 生写。
 
 ## Recommended Workspace Layout
 
 ```text
 paper-workdir/
-├── source.pdf
-├── paper.txt
-├── evidence_map.md
-├── analysis.md
-└── images/
+├── source.pdf          # 必备：原始材料副本
+├── evidence_map.md     # 必备：claim 与证据映射
+├── analysis.md         # 必备：图文精读成品
+├── paper.txt           # 可选但推荐：带页码标记的提取文本
+└── images/             # 可选但推荐：页面渲染与嵌入图
     ├── index.md
     ├── img-000.png
     ├── img-001.png
     └── ...
 ```
 
-如果已有更成熟的目录结构，可以兼容，但至少要保证有：
+如果已有更成熟的目录结构，可以兼容，但必备的三样不能少：
 
-- PDF 或等价原文来源
-- 一份连续可检索的提取文本
-- 一个单独的图片目录
-- 图片索引
-- 对复杂论文，最好再有一份证据地图草稿
+- `source.pdf` 或等价原文来源
+- `evidence_map.md`
+- `analysis.md`
+
+`paper.txt` 与 `images/`（含图片索引）是 PDF 分支的默认工作材料，缺了它们精读质量会明显下降，但不算结构要求。
 
 ## Material Preparation Order
 

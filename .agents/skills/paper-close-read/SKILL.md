@@ -1,6 +1,6 @@
 ---
 name: paper-close-read
-description: 单篇论文精读与成品笔记生成，覆盖本地 PDF 或提取文本的材料准备、图片整理、方法解读、实验与实证分析、局限与价值评估，并产出类似完整论文分析笔记的图文结果。Use when Codex needs to read one paper deeply, especially a local PDF, and produce a figure-rich, method- and evidence-focused note rather than a broad literature survey.
+description: 单篇论文精读与成品笔记生成。材料来源三选一：arXiv ID / URL（经 arxiv2md 抓取 Markdown 与图片）、本地 PDF（提取文本与页面渲染）、已有可读材料（txt / md 等直接使用）；随后建证据地图、解读方法与实验、评估局限与价值，产出图文精读笔记。Use when Codex needs to read one paper deeply — from an arXiv ID, a local PDF, or existing readable text — and produce a figure-rich, method- and evidence-focused note rather than a broad literature survey.
 ---
 
 # Paper Close Read
@@ -9,9 +9,9 @@ description: 单篇论文精读与成品笔记生成，覆盖本地 PDF 或提�
 
 围绕单篇论文做完整精读，重点不是扩展检索大量相关文献，而是把这篇论文本身读透、拆透、写成可复用的图文笔记。
 
-处理本地单篇论文时，必须同时完成三件事：
+处理单篇论文时，必须同时完成三件事：
 
-1. 准备材料：PDF、提取文本、图片或页面截图、图片索引。
+1. 准备材料：判断来源类型（arXiv ID / URL、本地 PDF、已有可读材料），按对应分支整理出 `source.<ext>` 与可用的图片材料。
 2. 建证据链：研究问题、方法结构、公式、关键图表、关键数字、作者 claim 与其支撑证据。
 3. 生成成品：按照完整笔记结构输出，而不是只给短摘要。
 
@@ -25,22 +25,41 @@ description: 单篇论文精读与成品笔记生成，覆盖本地 PDF 或提�
 
 ## Default Deliverables
 
-默认应在论文输出目录里尽量具备这些材料：
+必备产物只有三样：
 
-- `source.pdf`
-- `paper.txt`
-- `images/` 与 `images/index.md`
-- `analysis.md`
-- 对复杂、定量或图表密集论文，补一个 `evidence_map.md` 或等价草稿，用于记录 claim、图表、表格和关键数字
+- `source.<ext>` —— 原始材料副本，扩展名与来源一致（PDF 分支为 `source.pdf`，arXiv 分支为 `source.md`，已有可读材料保留原扩展名）
+- `evidence_map.md` —— claim、图表、表格与关键数字的映射，先建地图再写正文
+- `analysis.md` —— 图文精读成品
 
-如果没有显式生成 `evidence_map.md`，也必须先按证据地图方式完成中间分析，再开始写正文。
+按来源与需要补充的可选材料：
+
+- `paper.txt`（PDF 分支的提取文本，带页码标记）
+- `images/` 与 `images/index.md`（PDF 分支的页面渲染与嵌入图，或 arXiv 分支下载的论文图片）
 
 ## Workflow
 
-### 1. 准备本地论文材料
+### 1. 准备论文材料
 
-- 如果用户给的是本地 PDF，优先准备一个独立输出目录。
-- 输出目录命名规则：`<年份>-<主题>`，例如 `2024-ExpeL`。年份取论文的发表年份（未正式发表时取 arXiv 版本年份）；主题取论文的系统名 / 方法名，没有系统名时用一两个关键词。**目录名不带作者姓氏**，不要用 `chen2024promptcache` 这类 citekey 格式。若与已有目录撞名，在主题后加短后缀区分。
+先判断来源类型，走对应分支。三种来源共用一个输出目录命名规则：`<年份>-<主题>`，例如 `2024-ExpeL`。年份取论文的发表年份（未正式发表时取 arXiv 版本年份）；主题取论文的系统名 / 方法名，没有系统名时用一两个关键词。**目录名不带作者姓氏**，不要用 `chen2024promptcache` 这类 citekey 格式。若与已有目录撞名，在主题后加短后缀区分。
+
+#### 分支 A：arXiv ID 或 arXiv URL
+
+运行 skill 自带的 wrapper 脚本（内部在本仓库共享 uv 环境中调用 `packages/arxiv2md`，不需要预先安装任何东西）：
+
+  ```bash
+  scripts/prepare_arxiv_md.sh <arxiv-id-or-url> <output-dir>/
+  ```
+
+  它会完成：
+  - 抓取 arXiv 官方 HTML（无 HTML 时回退 ar5iv），转成 `source.md`：公式、表格、代码块、章节与文献锚点都已序列化
+  - 下载论文图片到 `images/`，链接改写为相对路径，并生成 `images/index.md`
+  - 下载失败的单张图保留远程 URL 并记 warning，不中断
+  - 论文的图全是 HTML 内嵌 SVG（无外部图片文件）时没有 `images/`，脚本会 warning——图的信息只剩 source.md 里保留的 SVG 文字，正文必须说明这一局限，或改走分支 B 用页面渲染裁图
+
+  具体要求见 [references/arxiv-md-workflow.md](references/arxiv-md-workflow.md)。
+
+#### 分支 B：本地 PDF
+
 - 用 `uv` 运行 `scripts/prepare_local_pdf.py`，依赖由脚本内的 PEP 723 声明自动解析，**不需要预先安装任何东西，也不需要 venv 或 sudo**：
 
   ```bash
@@ -59,7 +78,13 @@ description: 单篇论文精读与成品笔记生成，覆盖本地 PDF 或提�
 - 如果环境里没有 `uv`，脚本会退回 poppler（`pdftotext` / `pdfimages` / `pdftoppm`）；退回路径没有页码标记，能力更弱，仅作兜底。
 - 如果两条路径都不可用，继续寻找已有的提取文本、截图、图片目录或用户提供的辅助材料，不要直接退化成只写摘要。
 
-具体要求见 [references/local-paper-workflow.md](references/local-paper-workflow.md)。
+  具体要求见 [references/local-paper-workflow.md](references/local-paper-workflow.md)。
+
+#### 分支 C：已有可阅读材料（提取文本、Markdown、HTML、截图集等）
+
+- 不需要提取工具：把材料复制为输出目录下的 `source.<ext>`（保留原扩展名），直接在它上面工作。
+- 材料自带的图片一并收进 `images/` 并建 `images/index.md`；没有图片时根据用户需求补齐，或者留空即可。
+- 材料不全（缺图、缺表、缺附录）时在 `evidence_map.md` 里明确记录缺口，正文中说明对结论解读的影响。
 
 ### 2. 先建论文证据地图，再开始写
 
@@ -194,6 +219,7 @@ description: 单篇论文精读与成品笔记生成，覆盖本地 PDF 或提�
 
 ## Required Resources
 
+- 处理 arXiv 来源时，先读 [references/arxiv-md-workflow.md](references/arxiv-md-workflow.md)。
 - 处理本地 PDF 时，先读 [references/local-paper-workflow.md](references/local-paper-workflow.md)。
 - 起草前先读 [references/evidence-map.md](references/evidence-map.md)。
 - 起草完整结果时，读 [references/output-template.md](references/output-template.md)。

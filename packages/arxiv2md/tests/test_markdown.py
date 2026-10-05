@@ -259,6 +259,20 @@ def test_image_src_with_paper_id_prefix_resolves_against_parent() -> None:
     assert "1706.03762v7/1706.03762v7" not in result
 
 
+def test_image_src_with_versioned_prefix_under_versionless_base() -> None:
+    """src="1207.5777v1/intro1.png" under base .../html/1207.5777 must not duplicate the id."""
+    html = """
+    <figure>
+        <img src="1207.5777v1/intro1.png" alt="Evolution"/>
+    </figure>
+    """
+
+    result = convert_fragment_to_markdown(html, base_url="https://arxiv.org/html/1207.5777")
+
+    assert "https://arxiv.org/html/1207.5777v1/intro1.png" in result
+    assert "1207.5777/1207.5777v1" not in result
+
+
 def test_numbered_equation_table_emits_clean_display_math() -> None:
     """Numbered equation tables must not nest $...$ inside $$...$$ (KaTeX rejects that)."""
     html = (

@@ -322,12 +322,15 @@ def _resolve_image_urls(root: BeautifulSoup, base_url: str) -> None:
         base_url += "/"
     # Some papers reference assets with the paper-id prefix already included
     # (e.g. src="1706.03762v7/Figures/x.png" under base .../html/1706.03762v7);
-    # resolving those against base_url would duplicate the id segment.
-    base_id = base_url.rstrip("/").rsplit("/", 1)[-1]
+    # resolving those against base_url would duplicate the id segment. The
+    # version suffix may appear only in src (base .../html/1207.5777 with
+    # src="1207.5777v1/intro1.png"), so match it optionally on both sides.
+    base_id = re.sub(r"v\d+$", "", base_url.rstrip("/").rsplit("/", 1)[-1])
+    id_prefix_re = re.compile(re.escape(base_id) + r"(?:v\d+)?/")
     for el, attr in _iter_image_elements(root):
         src = el.get(attr)
         if src and not src.startswith(("http://", "https://", "data:")):
-            if src.startswith(base_id + "/"):
+            if id_prefix_re.match(src):
                 el[attr] = urljoin(base_url, "../" + src)
             else:
                 el[attr] = urljoin(base_url, src)
