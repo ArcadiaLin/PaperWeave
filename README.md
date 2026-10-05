@@ -24,7 +24,7 @@
   （动机、挑战、设计与章节大纲）。
 - [`docs/discussions/`](docs/discussions/) — 设计讨论记录，最新的总体梳理见
   `2026-10-05-versioned-knowledge-management.md`；其中未与用户确认的提议均为暂定。
-- [`docs/literature/`](docs/literature/) 与 [`references/`](references/) — 相关文献
+- [`docs/designs/v2`](docs/designs/v2) 详细系统设计
   笔记与外部材料；`references/refs.bib` 是论文元数据的跟踪来源。
 - `packages/`（`graph-doc`、`graph-vc` 等）与 `experiments/` — 正在搭建的实现与
   实验代码。
