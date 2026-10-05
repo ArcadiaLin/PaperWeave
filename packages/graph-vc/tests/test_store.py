@@ -261,3 +261,17 @@ def test_unversioned_properties_are_ignored(driver) -> None:
 def test_id_cannot_be_unversioned(driver) -> None:
     with pytest.raises(ValueError):
         VersionedGraph(driver, unversioned_props=frozenset({"id"}))
+
+
+def test_local_state_is_the_neighbourhood(graph: VersionedGraph) -> None:
+    seed(graph)
+    full = graph.snapshot()
+    local = graph.local_state(["method_0004", "missing_0001"])
+    # method_0004 的唯一关系是 method_0016 -[BROADER]-> method_0004；另一端的节点一并取出，不存在的 id 忽略
+    assert set(local.nodes) == {"method_0004", "method_0016"}
+    assert local.edges == {EdgeKey("method_0016", "BROADER", "method_0004"): {}}
+    assert local.nodes["method_0016"] == full.nodes["method_0016"]
+
+    whole = graph.local_state(["method_0016"])
+    assert whole == full
+    assert graph.local_state([graph.head()]) == GraphState()

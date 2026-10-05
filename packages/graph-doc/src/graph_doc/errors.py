@@ -15,4 +15,8 @@ class DocError(GraphDocError, ValueError):
     """文档本身不合法：YAML 语法、顶层结构、字段拼写、取值类型或文档内引用有误。与库的状态无关。"""
 
 
-__all__ = ["DocError", "GraphDocError"]
+class DiffError(GraphDocError, ValueError):
+    """目标状态与库中现状放在一起不可能成立：引用的节点不存在、新节点的 id 已被占用、向被删节点连边等。"""
+
+
+__all__ = ["DiffError", "DocError", "GraphDocError"]

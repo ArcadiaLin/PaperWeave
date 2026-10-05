@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -211,6 +211,32 @@ class VersionedGraph:
                RETURN a.id AS src, type(r) AS type, b.id AS dst, properties(r) AS props""",
             labels=_RESERVED_LABELS,
             types=_RESERVED_TYPES,
+        )
+        return _state_from_rows(nodes, edges, self._unversioned)
+
+    def local_state(self, ids: Iterable[str]) -> GraphState:
+        """``ids`` 周围的局部状态：其中存在的节点、它们的全部关系，以及这些关系另一端的节点。
+
+        上层据此求出变更集（不存在的 id 不出现在结果中）。读取在事务之外，若之后库被改动，
+        提交时的前提核对会发现并抛出 :class:`ConflictError`。连向没有 ``id`` 的节点的关系无法表示，不在结果中。
+        """
+        ids = sorted(set(ids))
+        edges = self._read(
+            """UNWIND $ids AS id MATCH (n {id: id})-[r]-(m)
+               WHERE m.id IS NOT NULL AND NOT type(r) IN $types
+                 AND none(l IN labels(n) + labels(m) WHERE l IN $labels)
+               RETURN DISTINCT elementId(r) AS rid, startNode(r).id AS src, type(r) AS type, endNode(r).id AS dst,
+                      properties(r) AS props""",
+            ids=ids,
+            labels=_RESERVED_LABELS,
+            types=_RESERVED_TYPES,
+        )
+        edges = list({r["rid"]: r for r in edges}.values())
+        nodes = self._read(
+            """UNWIND $ids AS id MATCH (n {id: id}) WHERE none(l IN labels(n) WHERE l IN $labels)
+               RETURN n.id AS id, labels(n) AS labels, properties(n) AS props""",
+            ids=sorted(set(ids) | {r["src"] for r in edges} | {r["dst"] for r in edges}),
+            labels=_RESERVED_LABELS,
         )
         return _state_from_rows(nodes, edges, self._unversioned)
 

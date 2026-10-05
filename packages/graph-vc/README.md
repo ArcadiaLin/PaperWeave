@@ -43,6 +43,7 @@ record = graph.commit(cs, author="claude", message="…", source="commit-tool", 
 graph.revert(record.id, author="claude")  # 以新提交撤销，不改写历史
 graph.history()  # 分支上的提交，从最早到最新
 graph.snapshot()  # 当前受版本管理的状态（GraphState）
+graph.local_state(["method_0016"])  # 这些节点、它们的全部关系及另一端的节点；上层据此求变更集
 ```
 
 `commit` 在一个事务中依次：锁分支节点 → 取出相关节点与边核对改前状态（不一致则抛 `ConflictError`，列出全部不一致项）→ 删边、建节点、改节点、建边与改边、删节点 → 写 `(:Commit)`、`PARENT`、`TOUCHED {op}`，推进分支头。任一步失败整体回滚。
