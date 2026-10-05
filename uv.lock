@@ -9,6 +9,7 @@ members = [
     "cacheplan",
     "cacheplan-e08",
     "cacheplan-e09",
+    "graph-vc",
 ]
 
 [[package]]
@@ -435,6 +436,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/30/3e/a80a8c077fd798951
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/58/8acf1b3e91c58313ce5cb67df61001fc9dcd21be4fadb76c1a2d540e09ed/fqdn-1.5.1-py3-none-any.whl", hash = "sha256:3a179af3761e4df6eb2e026ff9e1a3033d3587bf980a0b1b2e1e5d08d7358014", size = 9121, upload-time = "2021-03-11T07:16:28.351Z" },
 ]
+
+[[package]]
+name = "graph-vc"
+version = "0.1.0"
+source = { editable = "packages/graph-vc" }
+dependencies = [
+    { name = "neo4j" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "neo4j", specifier = ">=5.28,<7" }]
 
 [[package]]
 name = "h11"

@@ -1,0 +1,33 @@
+[project]
+name = "graph-vc"
+version = "0.1.0"
+description = "图的统一写入底层：变更集（带改前与改后状态）在单事务中执行并写入版本记录"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+# 服务端需要 Neo4j 5.26 及以上（动态 Label 与关系类型）。
+dependencies = [
+    "neo4j>=5.28,<7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/graph_vc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "RUF"]
+# 注释与文档字符串用中文，全角标点是正常写法。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["graph_vc"]

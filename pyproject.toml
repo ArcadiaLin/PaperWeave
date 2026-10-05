@@ -26,6 +26,7 @@ members = [
     "experiments/e09",
     "packages/arxiv2md",
     "packages/apply-patch",
+    "packages/graph-vc",
 ]
 exclude = [
     "experiments/p4a",             # 历史项目，vllm/mineru 版本与主线冲突，冻结

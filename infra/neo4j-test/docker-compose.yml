@@ -1,0 +1,13 @@
+# 单元测试用的一次性 Neo4j（packages/graph-vc 的数据库测试会清空它）。
+# 不挂载数据卷，容器删除即清空；端口避开 neo4j-e09（7474/7687），可与之同时运行。
+services:
+  neo4j-test:
+    image: neo4j:ubi10
+    container_name: neo4j-test
+
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+
+    environment:
+      NEO4J_AUTH: neo4j/password
