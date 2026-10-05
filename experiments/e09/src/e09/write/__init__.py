@@ -5,9 +5,10 @@ packages/graph-vc（变更集与版本记录）；这里只放 E09 数据模型�
 """
 
 from .checks import check_state, touched
+from .database import UnversionedDatabaseError, check_versioned, index_statements, open_graph, setup_database
 from .problems import Problem
 from .reader import MemoryReader, Neo4jReader, Reader
-from .report import plan, result, summarize
+from .report import conflict, plan, result, summarize
 from .review import Candidate, Deduper, Lookup, ResolveDeduper, delete_impact, review
 from .submit import Prepared, allocate_ids, apply, prepare
 from .translate import Context, Translation, translate
@@ -24,14 +25,20 @@ __all__ = [
     "Reader",
     "ResolveDeduper",
     "Translation",
+    "UnversionedDatabaseError",
     "allocate_ids",
     "apply",
     "check_state",
+    "check_versioned",
+    "conflict",
     "delete_impact",
+    "index_statements",
+    "open_graph",
     "plan",
     "prepare",
     "result",
     "review",
+    "setup_database",
     "summarize",
     "touched",
     "translate",

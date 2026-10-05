@@ -1,10 +1,13 @@
-"""写入路径测试的共用部件：内存中的图、材料文件与种子文档。"""
+"""写入路径测试的共用部件：内存中的图、材料文件与种子文档，以及测试实例的连接。"""
 
 from __future__ import annotations
 
+import os
 import textwrap
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,6 +15,13 @@ from e09.write import Context, Deduper, MemoryReader, Prepared, allocate_ids, pr
 from graph_vc import GraphState
 
 AT = "2026-10-05T12:00:00+00:00"
+
+# 数据库测试只连显式给出的测试实例（infra/neo4j-test，端口 7688），不会连 neo4j-e09
+TEST_URI = os.environ.get("GRAPH_VC_TEST_NEO4J_URI")
+TEST_AUTH = (
+    os.environ.get("GRAPH_VC_TEST_NEO4J_USER", "neo4j"),
+    os.environ.get("GRAPH_VC_TEST_NEO4J_PASSWORD", "password"),
+)
 
 SEED = """
 graph-doc: v0.1
@@ -153,6 +163,27 @@ def ingested(graph: MemoryGraph) -> MemoryGraph:
     prepared = graph.submit(DLINEAR, "paper:2023-DLinear")
     assert prepared.ok, prepared.errors
     return graph
+
+
+@pytest.fixture
+def test_driver() -> Iterator[Any]:
+    """测试实例的连接：未配置时跳过；要求开始时库为空，结束后清空库、约束与索引。"""
+    if TEST_URI is None:
+        pytest.skip("GRAPH_VC_TEST_NEO4J_URI is not set")
+    from neo4j import GraphDatabase
+
+    driver = GraphDatabase.driver(TEST_URI, auth=TEST_AUTH, notifications_disabled_classifications=["UNRECOGNIZED"])
+    count = driver.execute_query("MATCH (n) RETURN count(n) AS c").records[0]["c"]
+    if count:
+        driver.close()
+        pytest.skip(f"refusing to run: test database at {TEST_URI} is not empty ({count} nodes)")
+    yield driver
+    driver.execute_query("MATCH (n) DETACH DELETE n")
+    for record in driver.execute_query("SHOW CONSTRAINTS YIELD name").records:
+        driver.execute_query(f"DROP CONSTRAINT {record['name']}")
+    for record in driver.execute_query("SHOW INDEXES YIELD name, type WHERE type <> 'LOOKUP' RETURN name").records:
+        driver.execute_query(f"DROP INDEX {record['name']}")
+    driver.close()
 
 
 def rules(prepared: Prepared) -> set[str]:

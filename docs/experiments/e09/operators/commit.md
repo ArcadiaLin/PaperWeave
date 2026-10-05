@@ -1,6 +1,19 @@
 # Commit 工具设计：graph-doc
 
-> **状态：** 草案（2026-10-05），讨论中。本文记录 Commit 新入口的设计：读写同形的 YAML 文档 graph-doc。现行契约 [commit_contract.md](../../../designs/v2/commit_contract.md) 与 [operators.md](../../../designs/v2/operators.md) 尚未同步；E09 现有的 paper-form、supplement-form 与种子以后向本格式对齐，不在本文讨论范围内。第 8 节是建立在同一写入机制上的版本管理规划，第 9 节列出尚待决定的问题，第 10 节记录 TerminusDB 调研的工程见解与改进建议，第 11 节记录面向项目知识继承的理论建议与论文参照。
+> **状态：** 草案（2026-10-05），部分已实现。本文记录 Commit 新入口的设计：读写同形的 YAML 文档 graph-doc。现行契约 [commit_contract.md](../../../designs/v2/commit_contract.md) 与 [operators.md](../../../designs/v2/operators.md) 尚未同步。第 8 节是建立在同一写入机制上的版本管理规划，第 9 节记录实现中已定的问题与仍待决定的问题，第 10 节记录 TerminusDB 调研的工程见解与改进建议，第 11 节记录面向项目知识继承的理论建议与论文参照。
+>
+> **实现情况（2026-10-05）：**
+>
+> - 第 2–7 节的格式、写入语义、检查与 dry_run / apply 已实现：解析与求差在 `packages/graph-doc`，按冻结模型的翻译、查重与写后复核在 `experiments/e09/src/e09/write/`。
+> - 命令行入口是 `python -m e09.write`，它会拒绝没有版本记录的旧库，提交后补算向量。
+> - 第 8.2–8.3 节的 Commit 记录与 `Revert` 由 `packages/graph-vc` 实现。
+> - 尚未实现：
+>   - 读视图渲染（§6 R）；
+>   - `Log`、`Show`、`Diff`、`AsOf`、`Blame`；
+>   - Artifact 写入；
+>   - 分支。
+>
+> E09 旧的写入路径（论文表单、增补表单、种子入库）已删除，最后的版本留在 tag `e09-legacy-write`。现有的种子与两份论文表单将一次性转成 graph-doc，经新路径重建。
 
 ## 1. 为什么重新设计
 
@@ -29,7 +42,7 @@
 | `graph-doc` | ✓ | ✓ | 格式版本 |
 | `meta` | ✓ | 忽略 | 生成这份视图的查询、覆盖情况（返回数、是否截断、快照）、路径绑定与诊断信息 |
 | `by` | — | 必填 | 写入者。Agent 形成的记录的 `formed_by` 取自这里 |
-| `confirm` | — | 可选 | 写入时的确认，不入图：如判定新节点与查重候选不是同一对象（`distinct_from`），见 §8 |
+| `confirm` | — | 可选 | 写入时的确认，不入图：如判定新节点与查重候选不是同一对象（`distinct_from`），见 §5 |
 | `nodes` | ✓ | ✓ | 节点，按引用作键；同一节点在一份文档中只出现一次 |
 
 ### 2.2 引用
@@ -62,13 +75,37 @@ id 由中间件生成。Agent 读得到 id，但不会编造 id：新节点一�
 - **登记材料。** Paper 上写 `material: <路径>`，中间件登记 Material 并计算哈希。读到的视图中另有只读的 `_material: <material id>`。
 - **写 `FROM` 边。** 写成 `{to: <paper 或 art 引用>, locators: [...]}`，由中间件补上 `material_ref`，读时显示为边上的 `_material`。
 - **来源引用。** 格式为 `<material id>::<locator>`，locator 是 `<section>::<start>:<end>`。写入时也可以用 `<paper 或 art 的 id 或 $ 引用>::<locator>`，由中间件换成该节点当前的材料；这是因为新论文在入库前还没有材料 id。把读到的值原样抄回去也可以。
+- **更换材料。** Paper 登记材料后，暂不支持更换或清空 `material`。改材料会牵动已有 locator 与来源引用的校验，留待以后设计。
+
+### 2.5 中间件补上的内容
+
+下面这些由中间件在写入时生成，Agent 不写。
+
+**系统节点**
+
+| 内容 | 规则 |
+| --- | --- |
+| Material | `id` 为 `material_<内容 SHA-256 前 12 位>`，属性 `path`、`format: markdown`、`content_hash`，以 `MATERIAL_OF` 连到 Paper。材料文件的路径与哈希同时记入变更集的 `files`，提交前核对 |
+| NameKey | `name` 与每个 `aliases` 元素各对应一个 NameKey，以 `NAMES` 连到所命名的节点。`id` 就是它的 `key`，即 `<规范化名称>\|<kind>\|global`。`registered_by` 取自 `by`，`registered_from` 取自调用方给出的来源标签。名称在同一文档中从一个节点移到另一个节点时（合并，W6），改指原有的 NameKey，不删了再建 |
+
+**补在节点与边上的字段**
+
+| 内容 | 规则 |
+| --- | --- |
+| `FROM` 边的 `material_ref` | 取终点当前的材料 |
+| 来源引用 | 开头的 `$` 引用、节点 id 或材料 id 统一换成材料 id；locator 按材料行数检查是否越界 |
+| 形成信息 | 新建的 Observation、`stated_by: agent` 的 Contribution，以及 `stated_by: agent` 的 `SUPPORTS` / `OPPOSES` 边，补上 `formed_by`（取自 `by`）与 `formed_at` |
+| `exp_key` | 为 `<来源论文 id>::<anchors 的第一项>`，主锚点或来源论文改变时随之重算 |
+| `content_key` | 论文陈述的 Claim、Contribution 新建时生成，为 `<来源论文 id>::<kind>::<$ 引用名>`，之后不变 |
+
+两种自然键用来发现同一条记录被重复提交（`key-taken`）。dry_run 时新论文还没有 id，自然键中的论文用临时引用，此时同一篇论文的重复提交由标识、名称和材料的冲突发现。
 
 ## 3. 写入语义：交上来的就是想要的状态
 
 | 对象 | 出现 | `null` | 不写 |
 | --- | --- | --- | --- |
 | 属性 | 设为该值 | 清空 | 不动 |
-| 某一关系键 | 该类型出边的完整集合：多出的边新建，缺少的边删除，边属性按写的值更新 | — | 不动 |
+| 某一关系键 | 该类型出边的完整集合：多出的边新建，缺少的边删除；已有的边上，写出的边属性按值更新，写 `null` 清空，不写的边属性不动 | — | 不动 |
 | 节点 | 按上两行处理；`$` 引用则新建 | 删除该节点及其全部入边与出边 | 不动（不写 ≠ 删除） |
 
 - **集合与顺序。** `aliases`、`identifiers` 和出边列表都与顺序无关。增删 `aliases` 就是注册或撤销 NameKey。
@@ -78,7 +115,7 @@ id 由中间件生成。Agent 读得到 id，但不会编造 id：新节点一�
 - **入边。** 入边在起点上修改。Agent 先检索出子图，从而知道哪些节点指向目标节点，再修改这些节点的关系键。
 - **合并。** 没有专门的操作：先把边改指到保留的节点，移过别名，再删除被并入的节点（例 W6）。
 - **只交差异也可以。** 只交被修改的节点，甚至只交被修改的那一个关系键，结果与交回整份视图相同。“交一份完整的 YAML 文档”的意思是交一份 YAML 格式的子图；没改的部分带不带都可以。
-- **并发。** 暂不检测，后写入的覆盖先写入的。这是已知限制；§8.6 用 `base` 加变更集中的改前值，计划解除这一限制。
+- **并发。** 乐观检测。求差在事务之外读取现状，变更集记下改前值；提交时 graph-vc 在事务中核对改前值与库中当前值，不一致就抛出 `ConflictError`，整批不写，由 Agent 重新读取后再交。这只能发现 dry_run 读取之后库被改动；Agent 读视图时所在的提交可以作为 `base` 记入 Commit，但还没有用它判断视图是否过期（§9.2）。
 
 ## 4. 调用与返回
 
@@ -90,41 +127,56 @@ graph-doc ──dry_run──▶ graph-plan ──(无阻塞项)──▶ apply 
 
 | 调用 | 输入 | 职责 | 返回 |
 | --- | --- | --- | --- |
-| dry_run | graph-doc | 解析文档；检查格式、只读字段、端点规则与必需的边；解析引用；查重；计算与库中现状的差异 | graph-plan |
-| apply | 同一份 graph-doc | 重新执行 dry_run；没有阻塞项时，在单事务中写入、写后复核、补算向量 | graph-result |
+| dry_run | graph-doc | 解析文档；按模型翻译成目标状态并检查格式、只读字段与引用；查重；计算与库中现状的差异；在内存中执行差异，复核写后状态（端点规则、必需字段与必需的边） | graph-plan |
+| apply | 同一份 graph-doc | 先做一次 dry_run；没有阻塞项时分配 id，用真实 id 再做一次，然后在单事务中写入并记 Commit | graph-result |
+
+写后复核看的是改动节点及其邻居的完整状态，所以删除节点后，邻居缺了必需的边也会被发现。提交后补算向量；补算失败不回滚提交，只在 graph-result 的 `warnings` 中提示。提交时若发现库在 dry_run 之后被改动，返回 `status: conflict` 与不一致项（§3）。
 
 **graph-plan**
 
 | 键 | 内容 |
 | --- | --- |
 | `status` | `ready`、`blocked` 或 `noop` |
-| `changes` | `create`、`update`（按节点列出改动的字段与关系键）、`delete`、`edges` 的增删数 |
-| `blocking` | 每项为 `{rule, at, msg, candidates, fix}`；有任何一项时 apply 拒绝整批 |
-| `warnings` | 不阻塞的提示，如新建桩节点 |
+| `changes` | `create` 与 `delete` 列出模型节点；`update` 按节点列出改动的字段与关系键，改了 kind 记为 `kind`，增删了名称或别名记为 `names`；`edges` 是边的新建、修改、删除数；另有 `names`（NameKey 的增删数）与 `materials`（新登记的材料路径） |
+| `blocking` | 每项为 `{rule, at, msg}`，查重等需要判断的另带 `candidates`（每个候选给出 `ref`、`kind`、`name` 或 `text`，桩节点标 `stub`，查重命中的通道列在 `channels`），常见规则另带改法提示 `fix`。有任何一项时 apply 拒绝整批 |
+| `warnings` | 不阻塞的提示：查重通道执行失败、删除的影响面、开放类型上的模型外属性 |
 
 **graph-result**
 
 | 键 | 内容 |
 | --- | --- |
-| `status` | `committed` |
+| `status` | `committed`；提交时发现冲突则为 `conflict`，另给 `conflicts` 与 `fix` |
 | `commit` | 本次写入产生的 Commit id（§8） |
 | `ids` | `$` 引用到新 id 的映射 |
-| `counts` | 节点的新建、修改、删除数，边的新建、删除数 |
+| `counts` | 节点与边各自的新建、修改、删除数，含 NameKey 与 Material |
+| `warnings` | 同 graph-plan，有提示时才出现 |
 
-## 5. 检查（初稿）
+## 5. 检查
 
-| 类别 | 规则 | 处理方 |
-| --- | --- | --- |
-| 格式 | 顶层键、未知字段、`by` 必填；新节点必须写 `kind` | Agent 改文档 |
-| 只读 | 改了 `_` 字段；修改 Artifact | Agent 改文档 |
-| 引用 | 引用既不在库中，也不是本文档的 `$` 引用 | Agent 改文档 |
-| 端点 | 关系类型与起点、终点的 kind 不符（graph_model 的端点规则）；改 kind 后原有的边按新的 kind 复核 | Agent 改文档 |
-| 必需边 | 例如 Observation 必须有 `ABOUT`、Content 必须有 `FROM` | Agent 改文档 |
-| 材料 | locator 越界；来源引用指向的节点没有材料 | Agent 改文档 |
-| 查重 | 新节点的标识、名称或语义近邻命中已有节点（含桩节点）且未判定 | Agent 判断：换成已有 id，或写 `confirm.distinct_from` |
-| 删除 | 列出删除的影响面（入边、引用它的 Artifact） | 待定，见 §8 |
+表中第二列是 graph-plan 中的 `rule`。
 
-现行契约中的自然键冲突与“Content 不原地修改”两条不再适用：修改就是正常的写入。
+| 类别 | `rule` | 规则 | 处理方 |
+| --- | --- | --- | --- |
+| 格式 | `format`、`field`、`value` | 顶层键、`$` 引用与 id 的写法、未知字段、`by` 必填、新节点必须写 `kind`、属性值的类型与取值 | Agent 改文档 |
+| 只读 | `readonly` | 改了 `_` 字段；修改 Artifact | Agent 改文档 |
+| 引用 | `reference` | 引用既不在库中，也不是本文档的 `$` 引用 | Agent 改文档 |
+| 端点 | `endpoint`、`relationship` | 关系类型与起点、终点的 kind 不符（graph_model 的端点规则）；改 kind 后原有的边按新的 kind 复核；边的必填属性与 `role` 取值 | Agent 改文档 |
+| 必需字段与边 | `required-field`、`required-edge` | 例如 Observation 必须有 `ABOUT`，Claim 必须有 `FROM`，Experiment 必须有 `EVALUATES` | Agent 改文档 |
+| 材料 | `material`、`locator`、`source-ref` | 材料路径不存在或已属于别的 Paper；更换已登记的材料；locator 越界；来源引用指向的节点没有材料 | Agent 改文档 |
+| 唯一性 | `identifier-taken`、`name-taken`、`key-taken` | 唯一命名空间的标识、名称（NameKey）或自然键已属于另一个节点 | Agent 判断：同一对象就改用已有 id 修改它，否则更正 |
+| 查重 | `dedup` | 新建的 Entity / Concept 有未判定的候选 | Agent 判断：换成已有 id，或写 `confirm.<引用>.distinct_from` |
+| 删除 | `delete-impact` | 删除节点时一并删除的、来自其他模型节点的入边 | 只提示，不阻塞 |
+| 并发 | — | 提交时改前值与库中当前值不一致（`ConflictError`，§3） | Agent 重新读取后再交 |
+
+**查重的细节**
+
+- **对象。** 只查新建的 Entity 与 Concept；Content 不查重，它的重复由自然键发现。
+- **通道。** 查重经 Resolve 的写入模式执行。通道有标识、名称的精确命中，以及名称词面、文本词面、向量语义三路近邻，候选的 `channels` 记为 `identifier`、`name`、`lexical_name`、`lexical_text`、`semantic`。桩节点只有名称，只开名称词面通道。
+- **为什么要逐个判断。** 语义通道没有阈值，库中只要有同类对象就会给出近邻，所以每个新对象都要经过一次明确的判断。通道执行失败（如向量服务不可用）只给提示，候选可能不全。
+- **文档内部。** 同一文档中的新节点之间不互相查重。
+- **不查重的写入。** 调用方可以关闭查重，用于种子这类经人工整理、可信的批量入库。是否查重记入 Commit 的 `meta.dedup`。
+
+现行契约中的“Content 不原地修改”不再适用：修改就是正常的写入。自然键冲突只在新建或改键时检查。
 
 ## 6. 场景示例
 
@@ -286,28 +338,34 @@ nodes:
 
 ### P　W1 的 dry_run 返回
 
+库中已有 PatchTST 论文的桩节点 `paper_0003`，标识相同。有阻塞项时不计算差异，所以没有 `changes`。
+
 ```yaml
 graph-plan: v0.1
 status: blocked                                       # ready | blocked | noop
-changes:
-  create: [$paper, $patchtst, $timesnet, $exp-t3, $claim-sota, $contrib-patch]
-  update: {}
-  delete: []
-  edges: {create: 14, delete: 0}
 blocking:
-  - rule: paper-similar
-    at: $paper
-    msg: 库中有标识相同的 Paper 桩节点
-    candidates: [{ref: paper_0003, name: "A Time Series is Worth 64 Words …", stub: true, channels: [identifier]}]
-    fix: 是同一论文时把 $paper 换成 paper_0003（补全它）；不是则写 confirm.$paper.distinct_from
+  - rule: identifier-taken
+    at: nodes.$paper.identifiers[0]
+    msg: arxiv:2211.14730 already identifies
+    candidates: [{ref: paper_0003, kind: Paper, name: "A Time Series is Worth 64 Words …", stub: true}]
+    fix: "if it is the same object, edit the existing node by id; otherwise correct the identifier"
   - rule: dedup
-    at: $patchtst
-    msg: 语义近邻未判定
-    candidates: [{ref: method_0004, name: Transformer-based time series forecasting, channels: [vector]}]
-    fix: 是同一对象时换成该 id；不是则写 confirm.$patchtst.distinct_from
-warnings:
-  - {rule: stub-new, at: $timesnet, msg: 新建桩节点}
+    at: nodes.$paper
+    msg: 2 possible duplicate(s) not yet judged
+    candidates:
+      - {ref: paper_0003, kind: Paper, name: "A Time Series is Worth 64 Words …", stub: true,
+         channels: [identifier, lexical_name, semantic]}
+      - {ref: paper_0001, kind: Paper, name: Are Transformers Effective for Time Series Forecasting?,
+         channels: [semantic]}
+    fix: "same object: replace $paper with the candidate id; different: list it in confirm.$paper.distinct_from"
+  - rule: dedup
+    at: nodes.$patchtst
+    msg: 1 possible duplicate(s) not yet judged
+    candidates: [{ref: method_0004, kind: Method, name: Transformer-based time series forecasting, channels: [semantic]}]
+    fix: "same object: replace $patchtst with the candidate id; different: list it in confirm.$patchtst.distinct_from"
 ```
+
+语义通道会给出所有相近的同类对象，所以 `paper_0001` 也成了 `$paper` 的候选，需要明确判断。`$timesnet` 是桩节点，只查名称词面，这里没有候选。
 
 ### W2　查重往返：按 P 修改后重交
 
@@ -348,15 +406,17 @@ nodes:
 ```yaml
 graph-result: v0.1
 status: committed
-commit: commit_0008
+commit: commit_000008
 ids:
   $patchtst: method_0022
   $timesnet: method_0023
   $exp-t3: exp_0023
   $claim-sota: claim_0031
   $contrib-patch: contrib_0012
-counts: {nodes_created: 5, nodes_updated: 1, nodes_deleted: 0, edges_created: 14, edges_deleted: 0}
+counts: {nodes_created: 8, nodes_updated: 1, nodes_deleted: 0, edges_created: 19, edges_updated: 0, edges_deleted: 0}
 ```
+
+计数包括系统节点与系统边。新建的 8 个节点是 5 个模型节点、1 个 Material，以及 PatchTST、TimesNet 两个 NameKey；边数只作示意。
 
 ### W3　在读到的视图上修改已有节点
 
@@ -452,19 +512,23 @@ nodes:
 
 ### P′　W5 的 dry_run 返回
 
+删除不需要二次确认：graph-plan 只列出影响面，删错了可以用 `Revert` 撤销。下面假设 `claim_0019` 有一条 `SUPPORTED_BY` 边指向 `obs_0002`。
+
 ```yaml
 graph-plan: v0.1
-status: blocked
+status: ready
 changes:
+  create: []
+  update: {}
   delete: [obs_0002]
-  edges: {create: 0, delete: 4}
-blocking:
+  edges: {create: 0, update: 0, delete: 5}
+warnings:
   - rule: delete-impact
-    at: obs_0002
-    msg: 删除后以下引用将失效
-    impact: {in_edges: [], used_by_artifacts: [], about_by: []}
-    fix: 确认删除时写 confirm.obs_0002.delete_ok = true
+    at: nodes.obs_0002
+    msg: "also removes 1 incoming relationship(s): claim_0019-[SUPPORTED_BY]->obs_0002"
 ```
+
+影响面只列来自其他模型节点的入边；随节点一起删除的出边，以及 NameKey、Material 等系统边，不列在这里。
 
 ### W6　合并（组合写法）
 
@@ -592,23 +656,42 @@ changes:
       op: create
       after: {kind: Method, name: TimesNet, stub: true}
     # …
+    patchtst|method|global:                            # NameKey 也是普通节点，id 就是 key
+      op: create
+      after: {key: patchtst|method|global, raw: PatchTST, kind: Method, registered_by: claude, registered_from: commit-tool, …}
+    material_9c41d2a07b18:
+      op: create
+      after: {path: papers/2023-PatchTST/paper.md, format: markdown, content_hash: 9c41d2a07b18…}
+    # …
   edges:
     - {op: create, type: CITES, from: paper_0003, to: paper_0001,
        after: {description: 表 3 中 DLinear 的结果引自该文, source_refs: ["material_9c41d2a07b18::4.1 …::210:212"]}}
     - {op: create, type: BROADER, from: method_0022, to: method_0004}
+    - {op: create, type: NAMES, from: patchtst|method|global, to: method_0022}
+    - {op: create, type: MATERIAL_OF, from: material_9c41d2a07b18, to: paper_0003}
     # …
-  names:
-    - {op: register, key: patchtst, node: method_0022}
-  materials:
-    - {op: create, id: material_9c41d2a07b18, path: papers/2023-PatchTST/paper.md, hash: 9c41d2a07b18…, of: paper_0003}
-counts: {nodes_created: 5, nodes_updated: 1, nodes_deleted: 0, edges_created: 14, edges_deleted: 0}
+  files:
+    - {path: papers/2023-PatchTST/paper.md, sha256: 9c41d2a07b18…}
 ```
 
 变更集的约定：
 
 - **删除。** `op: delete` 记录被删节点的全部属性（`before`），连同的边逐条记为 `op: delete`，带边属性的 `before`，所以每个 Commit 都可以逆向执行。
 - **边的标识。** 一条边由起点、类型和终点确定。修改边属性记为 `op: update`。
-- **派生字段。** 自然键、向量这类可以由数据算出的字段不进入变更集，重放时重新计算。
+- **派生字段。** 向量这类派生字段不进入变更集，重放或撤销后重新计算。自然键要靠它发现重复提交，所以作为普通属性记入变更集。
+- **系统节点。** 名称与材料的增删就是 NameKey、Material 节点及其 `NAMES`、`MATERIAL_OF` 边的增删，不另设专门的段。
+
+**实现（graph-vc）。** Commit 节点上的属性见 `packages/graph-vc/README.md`，与上例的对应如下：
+
+| 上例 | 实现 |
+| --- | --- |
+| `commit`、`parents`、`branch`、`by`、`at`、`source`、`base`、`input` | `id`、`parent`（线性历史只有一个父提交）、`branch` 与分支内序号 `seq`、`author`、`at`、`source`、`base`、`input` |
+| `changes` | `changeset`（JSON） |
+| `ids` | `meta.ids`；`meta.dedup` 记这次写入是否查重 |
+| `confirm` | 不单独保存，留在 `input` 原文中 |
+| `rounds` | 尚未计数（§9.2） |
+| — | `message`：调用方给的说明，可选 |
+| — | `touched`、`removed`：本次触及且仍存在的节点、本次删除的节点（采纳 §10.3 建议 5） |
 
 ### 8.3 Commit 在图中的表示
 
@@ -619,7 +702,7 @@ counts: {nodes_created: 5, nodes_updated: 1, nodes_deleted: 0, edges_created: 14
 
 ### 8.4 历史查询
 
-这些是机制层的算子，与学术层算子分开列出。下表只是规划，契约待写。
+这些是机制层的算子，与学术层算子分开列出。下表只是规划，契约待写；目前只有 `Revert` 已由 graph-vc 实现，`graph.history()` 与 `graph.snapshot()` 可作为 `Log` 与当前状态读取的底层。
 
 | 算子 | 作用 |
 | --- | --- |
@@ -655,7 +738,7 @@ Artifact 写入同样产生 Commit（`source: {operator: …, artifact: …}`）
 - 不一致：说明两边改了同一个属性或同一个关系键，记为冲突。同一节点上一边删除、一边修改，也是冲突。
 - 冲突交给 Agent 处理：读两边的值，交一份 graph-doc 作为决议，这和平时的写入是同一流程。
 
-同一机制也可以用于 main 上的并发检测：写入时如果带上 `base`，就能发现读到的视图已经过期（§3 中“不检测并发”的限制因此可以解除）。
+同一机制也可以用于 main 上的并发检测：写入时如果带上 `base`，就能发现读到的视图已经过期，补上 §3 乐观检测发现不了的那部分。
 
 **回流时还要处理：**
 
@@ -680,21 +763,35 @@ Neo4j 社区版只支持一个用户数据库，所以按分支复制需要多�
 3. **原子。** 图的修改与 Commit 记录在同一个事务里，不存在没有 Commit 的修改。
 4. **文件完整。** Commit 引用的每个文件（材料、Artifact 文档）都存在，并且哈希一致。
 
-## 9. 待定问题
+## 9. 已定与待定问题
 
-1. **`confirm` 段。** 查重的否定判断（`distinct_from`）不属于学术层的图数据，但写入时必须给出，所以单独放在一段，并原样记入 Commit 记录（§8.2）。键名待定。
-2. **删除是否需要二次确认。** P′ 中暂用 `confirm.<id>.delete_ok`。另一种做法是直接删除，只在 graph-plan 中列出影响面。
-3. **来源引用读写不对称。** 读到的是 `<material id>::<locator>`，写入时也可以用 `<node 引用>::<locator>`（§2.4）。
-4. **Commit 只接受 id 和 `$` 引用。** 现行表单中的 `{mention, kind}` 引用取消，入库时 Resolve 调用会增多。
-5. **提交者与轮数。** 现行 `x-ingest` 的内容改记在 Commit 记录中（§8.2）：`by` 兼作提交者，dry_run 的来回轮数由中间件自己计数。需要确认中间件如何判定几次 dry_run 属于同一次提交。
-6. **改 kind 时 id 不变。** id 带有类型前缀（如 `dataset_0009` 改成 Benchmark 后前缀不再相符），需要决定是否接受。
-7. **`meta.bindings` 的格式。** 路径绑定目前写成交替排列的节点与关系的列表。
-8. **用 `stub: null` 表示补全桩节点。** 待确认这一写法。
-9. **分支的物化方式。** 见 §8.6。
-10. **fork 与 branch 是否需要区分。** 两者的机制相同，区别在于用途。
-11. **project 回流到 main 的粒度。** 可以按 Commit 挑选，也可以按节点或子图挑选。按子图挑选会切断 Commit 的完整性，需要重新生成变更集。
-12. **graph-doc 能否删除 Artifact 节点。** 删除时文档文件保留（§8.5）。
-13. **写入是否必须带 `base`。** 不带 `base` 时，冲突检测只能比较 `before` 与当前值，无法区分“被别人改过”与“读的视图已过期”。
+原先的问题编号保留，§10 按编号引用它们。
+
+### 9.1 已定（实现中落地，2026-10-05）
+
+- **问题 1　`confirm` 段。** 键名定为 `confirm`，每项只有 `distinct_from`，列出判定为不同对象的已有 id。它不入图，随 `input` 原文记入 Commit 记录。
+- **问题 2　删除不需要二次确认。** 取消 `delete_ok`。graph-plan 在 `warnings` 中列出影响面（P′），删错了用 `Revert` 撤销。
+- **问题 3　来源引用读写不对称。** 按 §2.4 实现：写入时开头可以是 `$` 引用、节点 id 或材料 id，入库时一律换成材料 id。
+- **问题 4　只接受 id 和 `$` 引用。** 按此实现，`{mention, kind}` 引用取消。
+- **问题 6　改 kind 时 id 不变。** 现行实现接受：改 kind 只换 Label，id 保持不变，原有的边按新 kind 复核（W3）。id 的类型前缀因此可能与 kind 不符，id 只作标识，不用来判断类型。
+- **问题 8　用 `stub: null` 补全桩节点。** 按此实现：`stub` 只能写 `true` 或不写，补全时写 `null` 清掉。
+- **NameKey。** `id` 就是 `key`，从而纳入版本管理；`registered_from` 填调用方给的来源标签（§2.5）。
+- **自然键。** `content_key` 用新建时的 `$` 引用名生成，之后不变（§2.5）。
+- **种子入库不查重。** 调用方可以关闭查重，用于可信的批量入库，是否查重记入 `meta.dedup`（§5）。
+- **文档内部不查重。** 同一文档中的新节点之间不互相查重。
+- **更换材料。** Paper 登记材料后暂不支持更换或清空（§2.4）。
+- **Metric 不建节点。** 冻结的模型中没有 Metric。旧表单中的指标在转换成 graph-doc 时写进 Experiment 的 `text`。
+- **向量补算失败不回滚。** 向量是提交后补算的派生属性，向量服务不可用时只给提示，提交保留，之后再补。
+
+### 9.2 仍待定
+
+- **问题 5　轮数。** `by` 已兼作提交者。dry_run 的来回轮数尚未计数，仍需决定中间件如何判定几次 dry_run 属于同一次提交。
+- **问题 7　`meta.bindings` 的格式。** 路径绑定目前写成交替排列的节点与关系的列表。读视图渲染时再定。
+- **问题 9　分支的物化方式。** 见 §8.6。
+- **问题 10　fork 与 branch 是否需要区分。** 两者的机制相同，区别在于用途。
+- **问题 11　project 回流到 main 的粒度。** 可以按 Commit 挑选，也可以按节点或子图挑选。按子图挑选会切断 Commit 的完整性，需要重新生成变更集。
+- **问题 12　graph-doc 能否删除 Artifact 节点。** 删除时文档文件保留（§8.5）。
+- **问题 13　写入是否必须带 `base`。** 现在 `base` 可选，只记录、不使用。乐观检测（§3）只能发现 dry_run 之后的改动，不能区分“被别人改过”与“读的视图已过期”。
 
 ## 10. TerminusDB 调研：工程见解与改进建议（2026-10-05）
 

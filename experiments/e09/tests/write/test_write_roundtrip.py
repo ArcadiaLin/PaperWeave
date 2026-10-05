@@ -6,40 +6,22 @@
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import AT, DLINEAR, SEED, MemoryGraph, doc, write_material
 
-from e09.utils.schema import DERIVED_FIELDS, NODE_LABELS, REL_TYPES
-from e09.write import Context, Neo4jReader, apply
+from e09.write import Context, Neo4jReader, apply, open_graph
 from graph_vc import VersionedGraph
-
-URI = os.environ.get("GRAPH_VC_TEST_NEO4J_URI")
-AUTH = (os.environ.get("GRAPH_VC_TEST_NEO4J_USER", "neo4j"), os.environ.get("GRAPH_VC_TEST_NEO4J_PASSWORD", "password"))
-
-pytestmark = pytest.mark.skipif(URI is None, reason="GRAPH_VC_TEST_NEO4J_URI is not set")
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> Iterator[tuple[VersionedGraph, Context]]:
-    from neo4j import GraphDatabase
-
-    driver = GraphDatabase.driver(URI, auth=AUTH)
-    count = driver.execute_query("MATCH (n) RETURN count(n) AS c").records[0]["c"]
-    if count:
-        driver.close()
-        pytest.skip(f"refusing to run: test database at {URI} is not empty ({count} nodes)")
+def store(test_driver: Any, tmp_path: Path) -> tuple[VersionedGraph, Context]:
     write_material(tmp_path, "papers/2023-DLinear/paper.md")
-    graph = VersionedGraph(
-        driver, file_root=tmp_path, node_labels=NODE_LABELS, rel_types=REL_TYPES, unversioned_props=DERIVED_FIELDS
-    )
+    graph = open_graph(test_driver, file_root=tmp_path)
     graph.setup()
-    yield graph, Context(Neo4jReader(graph, driver), "test", AT, tmp_path)
-    driver.execute_query("MATCH (n) DETACH DELETE n")
-    driver.close()
+    return graph, Context(Neo4jReader(graph, test_driver), "test", AT, tmp_path)
 
 
 def test_database_matches_the_in_memory_run(store, tmp_path: Path) -> None:

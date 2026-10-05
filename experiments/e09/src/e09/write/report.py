@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from graph_vc import Changeset, CommitRecord
+from graph_vc import Changeset, CommitRecord, ConflictError
 
 from ..utils.schema import kind_of
 from .problems import Problem
@@ -77,6 +77,16 @@ def result(prepared: Prepared, record: CommitRecord) -> dict[str, Any]:
     if warnings:
         out["warnings"] = [_problem(p, {}) for p in warnings]
     return out
+
+
+def conflict(error: ConflictError) -> dict[str, Any]:
+    """提交时改前状态与库中当前状态不一致（dry_run 之后库被改动）：整批未写入，需重新读取后再交。"""
+    return {
+        "graph-result": RESULT_VERSION,
+        "status": "conflict",
+        "conflicts": [{"at": c.target, "msg": c.reason} for c in error.conflicts],
+        "fix": "the database changed after the dry run; read the affected nodes again and resubmit",
+    }
 
 
 def summarize(changeset: Changeset, ref: dict[str, str]) -> dict[str, Any]:
@@ -174,4 +184,4 @@ def _ref_of(prepared: Prepared) -> dict[str, str]:
     return {node_id: ref for ref, node_id in prepared.ids.items()}
 
 
-__all__ = ["plan", "result", "summarize"]
+__all__ = ["conflict", "plan", "result", "summarize"]

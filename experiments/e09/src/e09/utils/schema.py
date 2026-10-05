@@ -175,10 +175,10 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT experiment_key IF NOT EXISTS FOR (n:Experiment) REQUIRE n.exp_key IS UNIQUE",
     "CREATE CONSTRAINT content_key IF NOT EXISTS FOR (n:Content) REQUIRE n.content_key IS UNIQUE",
     "CREATE CONSTRAINT material_hash IF NOT EXISTS FOR (m:Material) REQUIRE m.content_hash IS UNIQUE",
-    "CREATE CONSTRAINT batch_id IF NOT EXISTS FOR (b:IngestBatch) REQUIRE b.id IS UNIQUE",
 ]
-# 已退役的约束：ensure_schema 删除。result_row_key 属于行级入库（f95631b），首版改为报告级后不用
-RETIRED_CONSTRAINTS = ["result_row_key"]
+# 已退役的约束：ensure_schema 删除。result_row_key 属于行级入库（f95631b），首版改为报告级后不用；
+# batch_id 属于旧写入路径的 IngestBatch，已由 graph-vc 的 Commit 取代
+RETIRED_CONSTRAINTS = ["result_row_key", "batch_id"]
 
 # 全文索引：名称 → (Label, 字段, 分词方式)。检索字段按类别声明（intents_decompose.md §6.2）
 # - namekey_raw：名称词面通道。名称与 alias 都在 NameKey 上，对象上没有 aliases 列表；默认分词，不做词形还原
