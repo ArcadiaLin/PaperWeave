@@ -279,7 +279,7 @@ Earlier tracked discussion documents were pruned on 2026-09-09 and 2026-09-15
 and remain available in Git history. Do not restore or read them in bulk by
 default. Current design discussion is in
 `docs/discussions/2026-09-15-p4a-operators-skills-and-activities.md`, alongside
-the evolving narrative in `paper/introduction.zh.md`; proposals there remain
+the evolving narrative in `paper/narrative-draft.md`; proposals there remain
 tentative unless agreed with the user.
 
 The retained `docs/literature/2026-AgenticScholar.md` and older discussion notes
