@@ -259,16 +259,19 @@ nodes:
     _op: Check
     _title: DLinear 与 PatchTST 在 ETTh1 上的可比性
     _abs: 核对两文 ETTh1 结果在切分、回看窗口与预测长度上的可比性 …
+    _params:
+      items: {dlinear: art_0002#method_0016-dataset_0002-96, patchtst: art_0002#method_0027-dataset_0002-96}
+      pairs: all_pairs
+      dimensions: [{id: split, question: …}, {id: lookback, question: …}, {id: horizon, question: …}]
     _formed_by: claude
     _formed_at: 2026-10-04T15:10:00Z
     _session: s-0412
-    _document: artifacts/art_0003.md
+    _material: material_7a02c4f9e1b3
+    _document: artifacts/7a02c4f9e1b3.md
     _stale: []
     _USED:
-      - {to: exp_0001}
-      - {to: exp_0014}
-      - {to: paper_0001, locators: ["5.1 Experimental Settings::160:172"]}
-      - {to: art_0002, role: dlinear-etth1-96}
+      - {to: art_0002, role: [dlinear, method_0016-dataset_0002-96, method_0027-dataset_0002-96, patchtst]}
+      - {to: paper_0001, locators: ["5.1 Experimental Settings::160:172"], _material: material_1ec346c934e6}
 ```
 
 ### W1　新论文第一次入库
@@ -715,11 +718,11 @@ changes:
 
 ### 8.5 Artifact 的特殊处理
 
-Artifact 写入同样产生 Commit（`source: {operator: …, artifact: …}`），走同一个写入底层。区别在于它的文档存放在文件系统中，不在图里：
+Artifact 写入同样产生 Commit（`source: operator:<op>`，`meta: {artifact, session}`，`files` 记文档的路径与哈希），走同一个写入底层（`docs/designs/v2/operators.md` §5.5）。区别在于它的文档存放在文件系统中，不在图里：
 
-- **文件按内容寻址，写入后不再改动。** 文件名带上内容哈希，Commit 记录文档的路径与哈希。Artifact 只读，所以文件的版本只有一个。
+- **文件按内容寻址，写入后不再改动。** 文件为材料根目录下的 `artifacts/<内容哈希前 12 位>.md`，Commit 记录文档的路径与哈希。Artifact 只读，所以文件的版本只有一个。
 - **只写不删。** 分支操作和 Revert 只改变 Artifact 节点在某个分支上是否存在，不删除文件。即使 Artifact 节点被删除，文件仍然保留，否则 `AsOf` 和重放会失效。
-- **随 Commit 走。** 文档文件可以放在 git 之外，例如 `data/artifacts/`，但 Commit 链才是它的版本记录。重放时要求文件存在，并且哈希一致。
+- **随 Commit 走。** 文档文件放在 git 之外（E09 为 `data/raw/e09-paper-knowledge/artifacts/`），Commit 链才是它的版本记录。重放时要求文件存在，并且哈希一致。
 - **论文材料同理。** Paper 的材料也按路径加哈希记入变更集（`changes.materials`）。
 
 ### 8.6 分支：全局与项目
@@ -781,6 +784,7 @@ Neo4j 社区版只支持一个用户数据库，所以按分支复制需要多�
 - **文档内部不查重。** 同一文档中的新节点之间不互相查重。
 - **更换材料。** Paper 登记材料后暂不支持更换或清空（§2.4）。
 - **Metric 不建节点。** 冻结的模型中没有 Metric。旧表单中的指标在转换成 graph-doc 时写进 Experiment 的 `text`。
+- **问题 12　graph-doc 不能写入或删除 Artifact。** Artifact 只由 Agent 算子写入；读视图原样带回的 Artifact 被忽略，写了字段或写 `null` 删除都是 `readonly` 错误。删除被 `USED` 指向的节点时，graph-plan 提示用过它的 Artifact 将显示为可能过期。
 - **向量补算失败不回滚。** 向量是提交后补算的派生属性，向量服务不可用时只给提示，提交保留，之后再补。
 
 ### 9.2 仍待定
@@ -790,7 +794,6 @@ Neo4j 社区版只支持一个用户数据库，所以按分支复制需要多�
 - **问题 9　分支的物化方式。** 见 §8.6。
 - **问题 10　fork 与 branch 是否需要区分。** 两者的机制相同，区别在于用途。
 - **问题 11　project 回流到 main 的粒度。** 可以按 Commit 挑选，也可以按节点或子图挑选。按子图挑选会切断 Commit 的完整性，需要重新生成变更集。
-- **问题 12　graph-doc 能否删除 Artifact 节点。** 删除时文档文件保留（§8.5）。
 - **问题 13　写入是否必须带 `base`。** 现在 `base` 可选，只记录、不使用。乐观检测（§3）只能发现 dry_run 之后的改动，不能区分“被别人改过”与“读的视图已过期”。
 
 ## 10. TerminusDB 调研：工程见解与改进建议（2026-10-05）

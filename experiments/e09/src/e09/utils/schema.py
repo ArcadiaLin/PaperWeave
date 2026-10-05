@@ -23,6 +23,8 @@ ENTITY = frozenset(KINDS["Entity"])
 CONCEPT = frozenset(KINDS["Concept"])
 CONTENT = frozenset(KINDS["Content"])
 ARTIFACT = "Artifact"  # 只有主 Label，不分 kind（§8）
+# 产出 Artifact 的 Agent 算子（operators.md §4），记在 Artifact 的 op 上
+AGENT_OPS = ("Extract", "Summarize", "Generate", "Check", "Verify", "Filter", "Rank", "MatrixConstruct")
 SYSTEM_LABELS = frozenset({"NameKey", "Material", "IngestBatch"})
 
 # 有名称的 kind：name 与 aliases 注册为 NameKey（§2.2、§3.2、§5）。Issue、Proposition 是陈述型，没有名称。
@@ -146,6 +148,10 @@ RELATIONSHIPS = {
     "OVERLAPS_WITH": Relationship(ends=((CONCEPT, CONCEPT),), symmetric=True),
 }
 STANCE_RELS = frozenset({"SUPPORTS", "OPPOSES"})
+# Artifact 的使用关系（§8）：只由 Agent 算子写入，graph-doc 不能写，但可以沿它读取。role 是记录键或参数中的角色，
+# 同一终点有多个时为列表；引用材料的行范围时带 material_ref 与 locators
+USED = Relationship(ends=((_A, ENTITY | CONCEPT | CONTENT | _A),), props=_k("role", "locators"))
+TRAVERSABLE = {**RELATIONSHIPS, "USED": USED}  # 读取时可以走的关系
 SYSTEM_RELS = frozenset({"NAMES", "MATERIAL_OF", "USED"})  # 系统与使用产物的关系，graph-doc 不能写
 SYSTEM_REL_PROPS = frozenset({"material_ref", "formed_by", "formed_at", "embedding", "embedding_key"})
 
@@ -175,6 +181,9 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT experiment_key IF NOT EXISTS FOR (n:Experiment) REQUIRE n.exp_key IS UNIQUE",
     "CREATE CONSTRAINT content_key IF NOT EXISTS FOR (n:Content) REQUIRE n.content_key IS UNIQUE",
     "CREATE CONSTRAINT material_hash IF NOT EXISTS FOR (m:Material) REQUIRE m.content_hash IS UNIQUE",
+    # Artifact 只追加；相同 artifact_key 的写入是重试（operators.md §5.4）
+    "CREATE CONSTRAINT artifact_id IF NOT EXISTS FOR (n:Artifact) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT artifact_key IF NOT EXISTS FOR (n:Artifact) REQUIRE n.artifact_key IS UNIQUE",
 ]
 # 已退役的约束：ensure_schema 删除。result_row_key 属于行级入库（f95631b），首版改为报告级后不用；
 # batch_id 属于旧写入路径的 IngestBatch，已由 graph-vc 的 Commit 取代
@@ -188,8 +197,14 @@ FULLTEXT = {
     "entity_texts": ("Entity", ["description"], "english"),
     "concept_texts": ("Concept", ["definition", "text"], "english"),  # 术语型写 definition，陈述型写 text
     "content_texts": ("Content", ["text"], "english"),
+    "artifact_texts": ("Artifact", ["title", "abs"], "english"),
 }
-TEXT_FIELDS = {"Entity": ["description"], "Concept": ["definition", "text"], "Content": ["text"]}  # 文本通道与向量共用
+TEXT_FIELDS = {  # 文本通道与向量共用
+    "Entity": ["description"],
+    "Concept": ["definition", "text"],
+    "Content": ["text"],
+    "Artifact": ["title", "abs"],
+}
 DESCRIBED_RELS = ["CITES", "SUPPORTS", "OPPOSES", "IMPLEMENTS", "ADDRESSES"]  # 边上带 description，建关系向量索引（§5）
 
 # 版本管理下可以出现的 Label 与关系类型（graph-vc 的词表限制）

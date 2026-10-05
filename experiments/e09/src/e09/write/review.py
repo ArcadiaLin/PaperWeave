@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from graph_doc import Document, is_temp
 from graph_vc import Changeset
 
-from ..utils.schema import CONCEPT, ENTITY, FAMILY, NAMESPACES, kind_of
+from ..utils.schema import ARTIFACT, CONCEPT, ENTITY, FAMILY, NAMESPACES, kind_of
 from .problems import Problem
 
 CONFIRM_KEYS = frozenset({"distinct_from"})
@@ -76,7 +76,9 @@ def review(doc: Document, deduper: Deduper | None) -> list[Problem]:
 
 
 def delete_impact(changeset: Changeset, before_labels: Mapping[str, frozenset[str]]) -> list[Problem]:
-    """删除节点时一并删除的、来自其他模型节点的入边：提示影响面，不阻塞（可经 Revert 撤销）。"""
+    """删除节点时一并删除的、来自其他模型节点与 Artifact 的入边：提示影响面，不阻塞（可经 Revert 撤销）。
+
+    删掉 Artifact 的 ``USED`` 边后，该 Artifact 在读取时标为可能过期（按其文档头部的 ``nodes_used`` 核对）。"""
     deleted = {n.id for n in changeset.nodes if n.op == "delete"}
     problems = []
     for node_id in sorted(deleted):
@@ -88,12 +90,18 @@ def delete_impact(changeset: Changeset, before_labels: Mapping[str, frozenset[st
             if e.op == "delete"
             and e.key.dst == node_id
             and e.key.src not in deleted
-            and kind_of(before_labels.get(e.key.src, frozenset())) is not None
+            and _is_object(before_labels.get(e.key.src, frozenset()))
         )
         if sources:
             msg = f"also removes {len(sources)} incoming relationship(s): {', '.join(sources)}"
+            if any("-[USED]->" in s for s in sources):
+                msg += "; artifacts that used it will read as possibly stale"
             problems.append(Problem("delete-impact", f"nodes.{node_id}", msg, "warning"))
     return problems
+
+
+def _is_object(labels: frozenset[str]) -> bool:
+    return kind_of(labels) is not None or ARTIFACT in labels
 
 
 def _check_confirm(doc: Document) -> list[Problem]:

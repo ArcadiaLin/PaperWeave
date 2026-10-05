@@ -1,6 +1,6 @@
 # 算子契约
 
-> **状态：** 本文是 V2 的现行算子契约，规定全部算子的定义、输入输出、校验与图模式映射。算子分两部分：中间件算子（Search、Resolve、Traverse、ReadEvidence、Commit）负责对知识库的定位、导航、读原文与入库；Agent 算子（Extract、Summarize、Generate、Check、Verify、Filter、Rank、MatrixConstruct）规定 Agent 使用知识时的工作行为，每次调用的结果持久化为第四类节点 Artifact。Agent 算子的名称沿用 AgenticScholar（[S]：Table 2 与 Appendix D），定义按本项目的使用场景与职责边界重新规定。对象与关系见 [Graph Model V2](./graph_model_v2.md)，表单入库见 [Commit 契约](./commit_contract.md)，intent 与数据流见 [Workload 拆解](./intents_decompose.md)。E09 的实现状态见第 9 节。
+> **状态：** 本文是 V2 的现行算子契约，规定全部算子的定义、输入输出、校验与图模式映射。算子分两部分：中间件算子（Search、Resolve、Traverse、ReadEvidence、Commit）负责对知识库的定位、导航、读原文与入库；Agent 算子（Extract、Summarize、Generate、Check、Verify、Filter、Rank、MatrixConstruct）规定 Agent 使用知识时的工作行为，每次调用的结果持久化为第四类节点 Artifact。Agent 算子的名称沿用 AgenticScholar（[S]：Table 2 与 Appendix D），定义按本项目的使用场景与职责边界重新规定。对象与关系见 [Graph Model V2](./graph_model_v2.md)，入库见 `docs/experiments/e09/operators/commit.md`（早先的表单契约见 [Commit 契约](./commit_contract.md)），intent 与数据流见 [Workload 拆解](./intents_decompose.md)。E09 的实现状态见第 9 节。
 
 ## 1. 总览
 
@@ -9,7 +9,7 @@
 | 部分 | 算子 | 谁执行 | 结果 |
 | --- | --- | --- | --- |
 | 中间件算子 | `Search`、`Resolve`、`Traverse`、`ReadEvidence` | 中间件，确定性执行 | 任务内返回，不写库 |
-| 中间件算子 | `Commit` | 中间件，确定性执行 | 论文表单与增补表单入库 |
+| 中间件算子 | `Commit` | 中间件，确定性执行 | graph-doc 入库 |
 | Agent 算子：生成 | `Extract`、`Summarize`、`Generate` | Agent 生成内容，中间件校验 | 每次调用写一个 Artifact |
 | Agent 算子：判断 | `Check`、`Verify`、`Filter` | Agent 给出逐项判断，中间件校验 | 同上 |
 | Agent 算子：组织 | `Rank`、`MatrixConstruct` | 中间件对已有 Artifact 记录确定执行 | 同上 |
@@ -19,7 +19,7 @@ Agent 能用的工具就是这 13 个算子。中间件算子回答"库里有什
 ### 1.2 职责边界
 
 - **中间件不调用 LLM。** Agent 算子的内容（抽取值、概述、判断）由 Agent 生成后作为参数交给中间件；中间件只校验结构、引用与出处，并持久化。`Rank` 与 `MatrixConstruct` 只对结构化记录做排序与透视，由中间件执行。这与 AgenticScholar 不同：后者的这些算子是系统内部的一次 LLM 调用。
-- **所有写入经同一提交机制。** 校验、单事务写入、写后复核与补算向量。`Commit` 是提交表单的算子；Agent 算子不是 `Commit`，但它们写 Artifact 时使用同一机制（第 5.5 节）。校验不通过时不写入，返回错误。
+- **所有写入经同一版本底层。** 每次写入先校验，再经 graph-vc 在一个事务中写入并产生一个提交记录（版本历史），提交后补算向量。`Commit` 是提交 graph-doc 的算子；Agent 算子不是 `Commit`，但它们写 Artifact 时使用同一底层（第 5.5 节）。校验不通过时不写入，返回错误。
 - **引用参数只接收已确认的 id。** 名称先经 `Resolve`，语义候选经 Agent 确认（通常用 `Filter`）后才能作为引用参数。
 - **关系存在不是证据强度。** 路径、参与关系与 `USED` 只说明记录了这些关联；`SUPPORTED_BY`、`SUPPORTS` / `OPPOSES` 记录的是作者或 Agent 的陈述，不经验证。
 - **空结果不等于原文没有。** 论文表单选择性录入，按批次记录的 `coverage` 区分"原文没有报告"与"没有录入"（[Commit 契约](./commit_contract.md) §6）。数值、条件与结果行不在库中，由 Agent 读原文后经 `Extract` 取得。
@@ -42,35 +42,35 @@ Agent 算子要求声明输入、逐项给出判断与依据、在正文中标�
 
 ### 2.2 对象视图
 
-中间件算子返回的对象都使用以下视图。视图不含 `embedding`、`embedding_key` 等派生属性。Content 与 Artifact 的视图带出边的一跳引用（只有 id、名称与边上的角色），方便直接沿引用继续 `Traverse`；入边与边上的说明文字只经 `Traverse` 取得。
+中间件算子返回的对象视图就是 graph-doc（读写同形，格式见 `docs/experiments/e09/operators/commit.md` §2 与 §6 R）：`nodes` 以对象 id 为键，字段按写入时的拼写给出，原样交回 `Commit` 为 `noop`。
 
-| 类别 | 视图字段 |
-| --- | --- |
-| Entity / Concept | `ref`、`family`、`kind`、`name`、`aliases`（由 NameKey 装配）、`identifiers`、`stub`、`properties`（description / definition / text、note 等） |
-| Content（共有） | `ref`、`family`、`kind`、`text`、`source`（`paper`、`material_ref`、`locators`）、`source_refs`、`about`（全部 `ABOUT` 目标）；自然键 `exp_key` 或 `content_key`；`stated_by`（Contribution）；`formed_by`、`formed_at`（Agent 形成的记录） |
-| Experiment（另有） | `anchors`、`evaluates`（ref、name、role）、`uses`（ref、name、role）、`on_task`、`evaluated_on` |
-| Claim（另有） | `supported_by`（实验或观察的 ref） |
-| Artifact | `ref`、`family`、`op`、`title`、`abs`、`formed_by`、`formed_at`、`document`（`material_ref` 与路径）、`used`（ref 与 role）、`stale`（第 5.6 节） |
+- **字段。** `kind`、`name`、`aliases`（由 NameKey 装配，不含与 `name` 规范化后相同的写法）、`identifiers`、`stub`、`year`、`material`、`definition` / `description` / `text`、`anchors`、`stated_by`、`note` 等；自然键（`exp_key`、`content_key`）与 `embedding` 等派生属性不出现。
+- **关系。** 每个节点带它**全部**的模型出边，一个关系键列出该类型出边的完整集合（只列一部分交回时会删掉其余的边）；边上的属性写在边里，如 `{to, role}`、`{to, locators}`。入边不出现在节点上，经 `Traverse` 沿入边走到对方节点，对方节点的出边里就有这条边。
+- **只读字段**以 `_` 开头，交回时被忽略：有材料的节点与 `FROM` 边的 `_material`（材料 id），Agent 形成的记录与正反关系的 `_formed_by`、`_formed_at`。
+- **Artifact** 只由 Agent 算子写入，字段全部只读：`_op`、`_title`、`_abs`、`_params`、`_formed_by`、`_formed_at`、`_session`、`_material`、`_document`（文档路径）、`_stale`（第 5.6 节）与 `_USED`（`{to, role?, locators?}`，带来源引用的边另有 `_material`）。
 
-Observation 的 `about` 始终给出完整的对象集合：某个对象命中不代表结论对它单独成立。
+Observation 的 `ABOUT` 始终给出完整的对象集合：某个对象命中不代表结论对它单独成立。
 
 ### 2.3 AccessResult
 
-`Search` 与 `Traverse` 返回：
+`Search` 与 `Traverse` 返回读视图：一份 graph-doc，`nodes` 是结果涉及的对象视图（第 2.2 节），`meta` 是 AccessResult：
 
 ```text
-AccessResult = {items, bindings, source_refs, missing, coverage, continuation, diagnostics}
+AccessResult = {query, items, bindings, source_refs, missing, coverage, continuation, diagnostics}
 ```
 
 | 字段 | 内容 |
 | --- | --- |
-| `items` | 主体结果的对象视图，按结果顺序去重；下一步取 `refs(X)` 默认只取这里的引用 |
-| `bindings` | 每个结果的取得依据：`Search` 为命中的条件与通道，`Traverse` 为从起点到该结果的路径（每跳的关系、方向、边上属性与中间节点） |
-| `source_refs` | 结果涉及的来源引用，按出现顺序去重；只定位，不读取 |
+| `query` | 本次请求的参数 |
+| `items` | 主体结果的 id，按结果顺序去重；下一步取 `refs(X)` 默认只取这里的引用 |
+| `bindings` | 每个结果的取得依据：`Search` 为精确命中的方式，或各通道的名次与融合分（按结果 id 给出；按结构条件枚举时为空），`Traverse` 为每条路径，写成节点与关系交替的列表，如 `[method_0028, <-EVALUATES-, exp_0001, -USES->, dataset_0006]`；边上属性在起点一侧节点的出边里 |
+| `source_refs` | 结果涉及的来源引用（写成材料 id 的形式），按出现顺序去重；只定位，不读取 |
 | `missing` | 库中不存在的引用参数：`{ref, param, missing_in: store}` |
-| `coverage` | 参数、范围、预算、已匹配与返回数量、是否截断、通道状态、快照（最新 `IngestBatch` 的 id） |
+| `coverage` | 参数、范围、预算、已匹配与返回数量、是否截断、通道状态、快照（当前提交的 id） |
 | `continuation` | 截断时的续取位置；为空表示已取完 |
 | `diagnostics` | 不进入结果、但调用方需要知道的数量与引用，例如角色缺失、可展开的额外匹配 |
+
+`Search` 的 `nodes` 只有本页结果；`Traverse` 的 `nodes` 是本页路径上的全部节点（起点、中间节点与终点）。
 
 ### 2.4 预算、错误与会话
 
@@ -138,7 +138,7 @@ Search(type, query?, kinds?, where={}, expand={}, scope="global", budget, contin
 
 ### 3.2 Resolve
 
-**用途：** 把一个说法解析为 Entity 或 Concept 的引用。表单入库的查重也调用它（write 模式）。
+**用途：** 把一个说法解析为 Entity 或 Concept 的引用。`Commit` 的查重也调用它（write 模式）。
 
 ```text
 Resolve(query={identifier?, mention?, text?}, kind, scope="global", mode=read | write)
@@ -156,7 +156,7 @@ Resolve(query={identifier?, mention?, text?}, kind, scope="global", mode=read | 
 | `resolved` | 直接采用引用 |
 | `ambiguous` | Agent 在 `refs` 中确认；`resolution=conflicting` 时另作数据问题报告，不自动采用任一侧 |
 | `candidates` | Agent 逐个确认；全部否定时记 `resolution=missing`、`missing_in=store` |
-| `none` | 保留为未解决项，需要时由表单入库新建对象 |
+| `none` | 保留为未解决项，需要时经 `Commit` 新建对象 |
 | `unprocessed` | 进入错误出口 |
 
 同一任务中按说法键 `(raw, kind, scope)` 去重。新写法经确认后，经 `Commit` 的 `register` 注册为 alias。
@@ -178,14 +178,14 @@ hop = {rel, dir: out | in | both, kinds?, where?, edge?, depth?: 1–3}
 | `hop.dir` | 方向；对称关系 `OVERLAPS_WITH` 忽略方向 |
 | `hop.kinds` | 该跳终点的类型限制，如 `{Experiment}`、`{Artifact}` |
 | `hop.where` | 终点的结构条件，与 `Search` 同表 |
-| `hop.edge` | 边上属性条件，如 `{role: target}`、`{stated_by: agent}` |
-| `hop.depth` | 只用于传递性关系（`BROADER`、`PART_OF`、`HAS_PART`、`DERIVED_FROM`）的可变长匹配；不重复走同一条边，环在此截断 |
+| `hop.edge` | 边上属性条件，如 `{role: target}`、`{stated_by: agent}`；边上属性是列表时（`USED` 的 `role`、`locators`）按包含匹配 |
+| `hop.depth` | 只用于传递性关系（`BROADER`、`PART_OF`、`HAS_PART`、`DERIVED_FROM`）的可变长匹配；不重复走同一条边，环在此截断。`USED` 不是传递性关系，沿产物的输入链往回走时逐跳写出 |
 
-**可走的关系：** `FROM`、`ABOUT`、`EVALUATES`、`USES`、`ON_TASK`、`EVALUATED_ON`、`SUPPORTED_BY`、`SUPPORTS`、`OPPOSES`、`PART_OF`、`DERIVED_FROM`、`CITES`、`IMPLEMENTS`、`FOR_TASK`、`BROADER`、`HAS_PART`、`ADDRESSES`、`OVERLAPS_WITH`、`USED`。系统关系 `NAMES`、`MATERIAL_OF` 不对外开放：别名在视图中，文档在 Artifact 视图的 `document` 中。
+**可走的关系：** `FROM`、`ABOUT`、`EVALUATES`、`USES`、`ON_TASK`、`EVALUATED_ON`、`SUPPORTED_BY`、`SUPPORTS`、`OPPOSES`、`PART_OF`、`DERIVED_FROM`、`CITES`、`IMPLEMENTS`、`FOR_TASK`、`BROADER`、`HAS_PART`、`ADDRESSES`、`OVERLAPS_WITH`、`USED`。系统关系 `NAMES`、`MATERIAL_OF` 不对外开放：别名在视图中，文档在 Artifact 视图的 `_document` 中。
 
 **校验：** 每一跳按图模型的端点表（[Graph Model V2](./graph_model_v2.md) §6）检查起点类型、关系、方向与终点类型能否成立，不成立是契约错误，例如从 Method 出发沿出边走 `EVALUATES`。
 
-**输出：** `items` 为最后一跳终点的对象视图（去重）；`bindings` 为每条路径 `{start, hops: [{rel, dir, edge, node}]}`，边上属性原样返回（`role`、`description`、`stated_by`、`formed_by`、`formed_at`、`source_refs`、`locators` 等）。正反关系保留真实方向，不推导传递关系。预算按路径计，截断时报告已见数量。
+**输出：** 读视图（第 2.3 节）。`items` 为最后一跳的终点（去重）；`nodes` 为本页路径上的全部节点；`bindings` 为每条路径，写成节点与关系交替的列表，关系带方向（`-REL->` 或 `<-REL-`）。边上属性（`role`、`description`、`stated_by`、`locators` 等）在起点一侧节点的出边里，原样给出。正反关系保留真实方向，不推导传递关系。预算按路径计，截断时报告已见数量。
 
 **常用路径：**
 
@@ -205,16 +205,16 @@ hop = {rel, dir: out | in | both, kinds?, where?, edge?, depth?: 1–3}
 **用途：** 按来源引用读取固定材料中的行。论文原文与 Artifact 文档都是材料，读法相同。
 
 ```text
-ReadEvidence(source_refs) -> {items, missing, states, coverage}
+ReadEvidence(source_refs) -> {items, missing, coverage}
 ```
 
-按 Material 节点的路径与内容哈希读取，只定位与读取，不解释内容。逐项记录材料状态：`available`（读到，且文件哈希与入库时一致）、`missing`（引用格式不对、库中没有该材料或文件不在）、`error`（文件哈希变了或行号越界；不返回可能错位的文本）。
+引用的开头写材料 id，或写带材料的节点 id（论文或 Artifact），两者等价。按 Material 节点的路径与内容哈希读取，只定位与读取，不解释内容；读到的每行带行号，便于引用其中更小的范围。逐项记录材料状态：`available`（读到，且文件哈希与入库时一致）、`missing`（引用格式不对、库中没有该材料或文件不在）、`error`（文件哈希变了或行号越界；不返回可能错位的文本）。`missing` 列出状态为 `missing` 的引用，各状态的数量在 `coverage` 中。
 
 ### 3.5 Commit
 
-**用途：** 把论文表单与增补表单入库。契约见 [Commit 契约](./commit_contract.md)：表单 → compile → dry_run 返回结构化 plan → Agent 按阻塞项修改表单并重跑 → apply（单事务、写后复核、补算向量）。论文表单与增补表单共用同一入口与阻塞项格式。
+**用途：** 把论文知识与 Agent 的理解入库。提交物是 graph-doc（读写同形的子图，交上来的就是想要的状态），设计见 `docs/experiments/e09/operators/commit.md`：graph-doc → dry_run 返回 graph-plan（修改、阻塞项及候选与改法、提示）→ Agent 按阻塞项修改后重交 → apply（graph-vc 单事务提交，产生一个提交记录，提交后补算向量）返回 graph-result。新建、修改、删除与合并都用同一写法；早先的论文表单与增补表单（[Commit 契约](./commit_contract.md)）已转成 graph-doc。
 
-增补表单可以引用 Artifact：Observation 的 `about` 可指向 Artifact，`basis` 可指向 Artifact 文档的行范围，这是把工作产物提升为长期记录的途径（第 5.7 节）。
+graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`FROM` 可指向 Artifact 并带其文档的行范围，这是把工作产物提升为长期记录的途径（第 5.7 节）。Artifact 本身不能经 `Commit` 新建或修改；删除被 `USED` 指向的节点时，dry_run 提示用过它的 Artifact 将显示为可能过期。
 
 ## 4. Agent 算子
 
@@ -222,7 +222,7 @@ ReadEvidence(source_refs) -> {items, missing, states, coverage}
 
 ```text
 <Op>(title?, abs, inputs, params, payload, session, formed_by)
-  -> {artifact, document, render, warnings} | {errors}
+  -> {status: created | existing, artifact, commit, document, warnings, stats?, render} | {errors}
 ```
 
 | 字段 | 说明 |
@@ -238,11 +238,13 @@ ReadEvidence(source_refs) -> {items, missing, states, coverage}
 
 **共同校验（任一不过即整次拒绝，不写入）：**
 
-1. `inputs` 中的对象引用、Artifact 与记录引用都在库中；来源引用格式正确，所指材料在库中。
-2. `payload` 中出现的每个引用都属于 `inputs`。
-3. `params` 与 `payload` 符合该算子的 schema；判断类的每个单元恰有一条判断（不能遗漏，也不能重复）。
+1. `inputs` 是不重复的引用列表。其中的对象引用、Artifact 与记录引用都在库中（记录引用的键须出现在该 Artifact 文档的数据块中）；来源引用格式正确，所指材料在库中，文件与登记的哈希一致，行号不越界。
+2. `params` 与 `payload` 中出现的每个引用（引用参数、`basis`、`source`、`ref` 字段与正文中方括号里的引用）都属于 `inputs`。来源引用的开头写材料 id 或材料所属的节点 id 视为同一个引用。
+3. `params` 与 `payload` 符合该算子的 schema；判断类的每个单元恰有一条判断（不能遗漏，也不能重复）。给了判断但不合格的单元只报不合格，不再另报遗漏。
 
-**返回：** `artifact` 为新 Artifact 的 id；`document` 为产物文档的路径与 `material_ref`；`render` 是文档正文，可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示，例如某个输入没有在正文中被引用。错误的形状与 `Commit` 的阻塞项相同：`{rule, where, msg}`。
+**返回：** `status` 为 `created`，或相同调用的重试返回 `existing`（第 5.4 节，此时 `commit` 为空）；`artifact` 为 Artifact 的 id；`commit` 为本次写入的提交 id；`document` 为产物文档的路径与 `material_ref`；`stats` 为该算子的统计（目前只有 `Generate`）；`render` 是文档正文（不含头部），可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示：`unused-input`（某个输入没有在 `params` 与 `payload` 中被引用）、`embedding`（提交后补算向量失败，提交保留）。
+
+**错误**的形状与 `Commit` 的阻塞项相同：`{rule, where, msg}`，`rule` 为 `format`（请求的形状）、`schema`（算子参数与内容）、`reference`（引用不在库中或不属于 `inputs`）、`judgment`（判断的取值、依据与覆盖）、`citation`（`Summarize` 的段落缺少引用）或 `conflict`（提交时与并发写入冲突）。命令行入口为 `python -m e09.use`（第 9 节）。
 
 **判断的取值：** `T` 表示在声明的条件与依据下成立；`F` 表示有依据判断不成立；`U` 表示依据不足、相互冲突或条件含义不明。`T` 与 `F` 必须给出 `basis`（属于 `inputs` 的引用），`U` 必须给出 `reason`。执行中断与格式错误是 `errors`，不能写成 `U`。
 
@@ -259,9 +261,10 @@ Extract(inputs, params: {schema: {fields: {name: type}, required: [...], key: [.
 
 - **字段类型：** `string`、`number`、`integer`、`boolean`、`ref`（图中对象引用）、`enum[...]`。单位、口径等写成独立字段，不混进数值。
 - **`source`：** 每行的出处，为 `inputs` 中的一个引用。
-- **校验：** 每行符合 schema；`required` 字段非空；`key` 在本次产物中唯一；`ref` 字段的对象在库中。
+- **记录键：** `key` 必填，列出决定一条记录的字段；记录键由这些字段的值依次转成小写、非字母数字换成 `-` 后用 `-` 连接，例如 `method_0003-dataset_0001-96`。
+- **校验：** 字段名为小写标识；每行只含声明的字段与 `source`，值符合类型；`required` 与 `key` 中的字段非空；记录键在本次产物中唯一；`ref` 字段与 `source` 的引用都属于 `inputs`（因而在库中）。
 - **空结果：** `rows` 为空时必须写 `note`，说明读了什么、为什么没有，记录的是"材料中没有找到"。
-- **正文：** 一张记录表（每行一个键，最后一列为出处）；`note`（如有）；数据块 `{schema, rows}`。每条记录可用 `<artifact>#<key>` 引用。
+- **正文：** 一张记录表（第一列为记录键，未填的字段写"—"，最后一列为出处）；`note`（如有）；数据块 `{schema, rows: [{key, <fields>, source}], note?}`。每条记录可用 `<artifact>#<key>` 引用。
 - **不做的事：** 不跨行合并不同设置下的值，不换算单位，不补原文没有的值。
 
 ### 4.3 Summarize
@@ -272,7 +275,7 @@ Extract(inputs, params: {schema: {fields: {name: type}, required: [...], key: [.
 Summarize(inputs, params: {focus}, payload: {text})
 ```
 
-- **校验：** `text` 非空；**每个段落至少有一处引用**，引用都属于 `inputs`。
+- **校验：** `text` 非空；**每个段落至少有一处引用**，引用都属于 `inputs`。段落以空行分隔，只有标题的段落不计。方括号中的内容全部是引用时才算引用（多个引用以逗号或分号分隔）；`[文字](链接)` 形式的 Markdown 链接不算。
 - **正文：** `text` 原样。
 - **与 Generate 的区别：** Summarize 只压缩与重组输入中已有的内容；需要推断、建议或新内容时用 `Generate`。
 
@@ -284,7 +287,7 @@ Summarize(inputs, params: {focus}, payload: {text})
 Generate(inputs, params: {purpose: answer | draft | idea | plan | other}, payload: {text})
 ```
 
-- **校验：** `text` 非空；出现的引用都属于 `inputs`。允许没有引用的段落，Artifact 记录有引用的段落比例。
+- **校验：** `text` 非空；出现的引用都属于 `inputs`。允许没有引用的段落；有引用的段落比例在返回的 `stats.cited_paragraphs` 中给出（如 `1/3`），不另存，需要时可从文档重算。
 - **正文：** `text` 原样。
 - **最终回答：** 回答中的数值、比较与判断应引用 `Extract`、`MatrixConstruct`、`Check`、`Verify` 的产物（第 6 节）。
 
@@ -298,8 +301,8 @@ Check(inputs, params: {items: {key: 引用}, pairs: [[k1, k2], ...] | all_pairs,
 ```
 
 - `items` 的引用可以是对象、记录或来源引用，至少两项。
-- **校验：** 每个 `(pair, dimension)` 恰有一条判断。`T` 表示在该维度上一致或可比。
-- **正文：** 一张判断表（行为成对的项，列为维度，单元格为 `T` / `F` / `U`）；其下逐条列出 `F` 与 `U` 的依据和原因；数据块 `{items, dimensions, judgments}`。每个对可用 `<artifact>#<k1>~<k2>` 引用。
+- **校验：** 每个 `(pair, dimension)` 恰有一条判断；判断中的 `pair` 不计顺序，`[k2, k1]` 与声明的 `[k1, k2]` 是同一对。`all_pairs` 展开为 `items` 的全部两两组合。`T` 表示在该维度上一致或可比。
+- **正文：** 一张判断表（行为成对的项，列为维度，单元格为 `T` / `F` / `U`）；其下逐条列出 `F` 与 `U` 的依据和原因；数据块 `{items, pairs, dimensions, judgments}`，`pairs` 按声明的顺序。每个对可用 `<artifact>#<k1>~<k2>` 引用，`k1`、`k2` 的顺序与 `pairs` 中相同。
 - **不做的事：** 不给出总体结论（"这两组结果可比"）。维度的合取规则由调用方声明，或交给 `Generate` 说明。
 
 ### 4.6 Verify
@@ -314,8 +317,8 @@ Verify(inputs: 证据, params: {claim: 引用 | {text}},
 - `claim` 可以是 Claim、Observation、记录引用，或一段写明的主张文本。
 - `T` 表示证据支持，`F` 表示证据反驳，`U` 表示不足以判断。**没有找到支持不等于反驳**，应为 `U`。
 - `conditions` 写成立的范围与限定，例如"仅在预测长度不超过 336 时成立"。
-- **正文：** 一行结论（主张与 `T` / `F` / `U`）、成立范围、依据与原因。
-- 需要长期留存的结论，经增补表单写成 Observation 或 Agent 的正反关系。
+- **正文：** 一行结论（主张与 `T` / `F` / `U`）、成立范围、依据与原因。`claim` 为引用时，它也须属于 `inputs`，其 `USED` 边的 `role` 含 `claim`。
+- 需要长期留存的结论，经 `Commit` 写成 Observation 或 Agent 的正反关系。
 
 ### 4.7 Filter
 
@@ -327,7 +330,7 @@ Filter(inputs, params: {items: {key: 引用}, condition: {id, text}},
 ```
 
 - **校验：** 每个 `key` 恰有一条判断。
-- **正文：** 条件一行；按 `T` / `F` / `U` 分三节，每项一行（键、引用、依据或原因）；数据块 `{items, condition, judgments}`。`U` 不得当作 `F` 丢弃，必须保留。
+- **正文：** 条件一行；按 `T` / `F` / `U` 分三节，每项一行（键、引用、依据或原因）；数据块 `{items, condition, judgments}`。`U` 不得当作 `F` 丢弃，必须保留。每项可用 `<artifact>#<key>` 引用。
 - 其他算子可用 `keep: <Filter 产物>` 只取 `T` 项（第 4.8、4.9 节）。
 
 ### 4.8 Rank
@@ -337,6 +340,8 @@ Filter(inputs, params: {items: {key: 引用}, condition: {id, text}},
 ```text
 Rank(inputs: Extract 产物, params: {by: [{field, order: asc | desc}], group_by?, where?, keep?, top_k?})
 ```
+
+> 尚未实现：调用返回 `format` 错误 `not implemented yet`（第 9 节）。
 
 - **语义：** 先按 `where`（字段相等条件）与 `keep`（Filter 产物中的 `T` 项）筛选，再按 `group_by` 分组，组内按 `by` 排序；并列取相同名次。缺少 `by` 字段的记录列入 `unranked`。
 - **可比性由调用方保证。** `group_by` 应包括决定可比性的字段（如数据集、预测长度、指标）；是否真的可比由 `Check` 判断后经 `Filter` 或 `keep` 传入。Rank 本身不判断可比性。
@@ -353,6 +358,8 @@ MatrixConstruct(inputs: Extract 产物（可多个，字段同名）,
                          where?, keep?})
 ```
 
+> 尚未实现，同 `Rank`。
+
 - **语义：** 筛选同 `Rank`；以 `rows`、`columns` 字段的取值为行列，单元格放 `value` 字段的值。`aggregate=none` 时同一格有多个值就全部列出，不隐式合并；`count` 用于分组计数，覆盖 GroupBy 与 Aggregate 的用途。
 - **空单元格**写"—"，表示输入的记录中没有，不表示原文或世界上不存在。
 - **正文：** 一张矩阵表，每格写值与产生它的记录引用。
@@ -367,7 +374,7 @@ Artifact 是第四类节点，与 Entity、Concept、Content 并列：记录 Age
 
 ```text
 (:Artifact {id: art_<序号>, op, title, abs, params, formed_by, formed_at, session, artifact_key})
-(a:Artifact)-[:USED {role?, material_ref?, locators?}]->(x)    x 为任意 Entity、Concept、Content 或 Artifact
+(a:Artifact)-[:USED {role?: [..], material_ref?, locators?: [..]}]->(x)    x 为任意 Entity、Concept、Content 或 Artifact
 (m:Material {path, content_hash})-[:MATERIAL_OF]->(a:Artifact) 产物文档
 ```
 
@@ -375,17 +382,17 @@ Artifact 是第四类节点，与 Entity、Concept、Content 并列：记录 Age
 | --- | --- |
 | `op` | 产出它的 Agent 算子 |
 | `title`、`abs` | 标题与摘要，与文档头部相同，参与检索与向量 |
-| `params` | 调用参数（JSON 字符串） |
+| `params` | 调用参数（键排序后的 JSON 字符串） |
 | `formed_by`、`formed_at`、`session` | 形成者、时间（写入时生成）与会话 |
-| `artifact_key` | `op`、`inputs`、`params`、`payload` 与 `formed_by` 的哈希，用于幂等 |
+| `artifact_key` | `op`、`inputs`、`params`、`payload` 与 `formed_by` 的哈希（SHA-256 的前 16 位），用于幂等；唯一约束 |
 
 `USED` 的写法：
 
-- 对象引用 → `USED` 指向该对象，`role` 取 `params` 中的角色（如 Check 的 item 键），可省略；
+- 对象引用 → `USED` 指向该对象，`role` 取它在 `params` 中的角色（Check、Filter 的项键，Verify 的 `claim`），没有角色时省略；
 - 来源引用 → `USED` 指向该材料所属的节点（论文或 Artifact），边上带 `material_ref` 与 `locators`，与 `FROM` 的写法相同；
 - 记录引用 → `USED` 指向该记录所属的 Artifact，`role` 记录键。
 
-`USED` 只表示"产出时用到了它"，不表示支持、讨论或同一。
+同一 Artifact 到同一终点只有一条 `USED` 边（graph-vc 以起点、类型、终点标识一条边），所以 `role` 与 `locators` 都是列表：几个项键、记录键指向同一终点时合并为一个排序后的列表，同一材料的几个行范围合并到 `locators`。`USED` 只表示"产出时用到了它"，不表示支持、讨论或同一。
 
 ### 5.3 文档
 
@@ -398,27 +405,47 @@ nodes_used: [<inputs 中的引用>]
 abs: <Agent 撰写或自动生成>
 ---
 <正文：结构按算子规定（第 4.2–4.9 节）>
+<数据块（Extract、Check、Filter）：正文末尾的 ```yaml 代码块>
 ```
 
-`op`、形成者、时间与参数记在节点上，不重复写进文档。
+- `nodes_used` 按 `inputs` 的顺序，来源引用统一写成材料 id 的形式，与 `ReadEvidence` 的写法相同。它是不可变的输入记录，读取时据此计算过期（第 5.6 节）。
+- 数据块是文档中最后一个 `yaml` 代码块；记录引用按它解析。
+- 文档按内容寻址：存放在材料根目录下的 `artifacts/<内容哈希前 12 位>.md`，对应的 Material id 为 `material_<内容哈希前 12 位>`。文件不进 git，版本由提交链记录（`docs/experiments/e09/operators/commit.md` §8.5）。
+- `op`、形成者、时间与参数记在节点上，不重复写进文档。
 
 ### 5.4 身份与幂等
 
-Artifact 没有同一性问题：不查重，不合并，只追加。相同 `artifact_key` 的调用视为重试，返回已有的 Artifact，不重复写入。Artifact 及其文档写入后不修改。
+Artifact 没有同一性问题：不查重，不合并，只追加。相同 `artifact_key` 的调用视为重试，返回已有的 Artifact（`status: existing`），不重复写入。`session` 与 `title` 不在 `artifact_key` 中：换会话或只改标题的相同调用仍是重试。Artifact 及其文档写入后不修改，也不能经 `Commit` 修改或删除。
 
 ### 5.5 写入
 
-Agent 算子校验通过后，经与 `Commit` 相同的提交机制写入（[Commit 契约](./commit_contract.md) §7）：单事务写节点、`USED` 边、Material 与 `MATERIAL_OF`；写后复核（节点与边都在，文档哈希一致）；补算 `title` 与 `abs` 的向量。文档先写到文件再登记哈希，事务失败时文件作废，不留节点。Artifact 不写 `IngestBatch`，形成信息在节点上。
+Agent 算子校验通过后，经与 `Commit` 相同的版本底层（graph-vc）写入，顺序是：
+
+1. 按 `artifact_key` 查找，已有则作为重试返回（第 5.4 节）；
+2. 写文档：先写临时文件再改名；同一路径已有内容相同的文件就不再写，内容不同则拒绝；
+3. 分配 id，在一个事务中写 Artifact 节点、`USED` 边、Material（同一文档已登记时不重复建）与 `MATERIAL_OF`，产生一个提交记录：`source` 为 `operator:<op>`，`author` 为 `formed_by`，`meta` 记 Artifact 的 id 与会话，`files` 记文档的路径与哈希；
+4. 提交后补算 `title` 与 `abs` 的向量；失败不回滚，只在 `warnings` 中提示。
+
+事务失败时文档文件留在原处：它按内容寻址，没有节点引用，不影响库，重试时直接复用。形成信息在节点与提交记录上。
 
 ### 5.6 检索与过期
 
 - **默认不进入 Search 的结果**，见第 3.1 节；经 `Search(type=Artifact)` 或沿 `USED` 的 `Traverse` 取得。
-- **过期在读取时计算，不存状态。** 视图的 `stale` 列出"可能过期"的原因：某个 `USED` 目标已不在库中、所用材料的文件哈希与登记的不同，或所用的 Artifact 本身 `stale`。过期只是提示，不修改、不删除。
+- **过期在读取时计算，不存状态。** 视图的 `_stale` 逐项列出"可能过期"的原因 `{ref, reason}`：
+
+  | `reason` | 含义 |
+  | --- | --- |
+  | `document` | Artifact 自己的文档文件不在，或内容与登记的哈希不同 |
+  | `removed` | 文档头部 `nodes_used` 中的对象（或记录所属的 Artifact、来源引用的材料）已不在库中 |
+  | `material` | 所用材料的文件不在，或哈希与登记的不同 |
+  | `stale input` | 所用的 Artifact 本身可能过期（递归计算） |
+
+  删除节点时 graph-doc 一并删掉指向它的 `USED` 边，所以 `removed` 按不可变的文档头部核对，而不是看现存的边。过期只是提示，不修改、不删除。
 - **价值信号：** 被其他 Artifact `USED` 的次数、被 Observation 引用的次数，供检索排序与日后清理使用。
 
 ### 5.7 提升为长期记录
 
-Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写入的理解。需要长期留存的产物，经增补表单写成 Observation：`about` 指向该 Artifact，`basis` 指向其文档的行范围。读取时两者分开呈现，不把 Artifact 当作已确认的结论。
+Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写入的理解。需要长期留存的产物，经 `Commit` 写成 Observation：`ABOUT` 指向该 Artifact，`FROM` 指向该 Artifact 并带其文档的行范围（如 `{to: art_0003, locators: ["Check::12:20"]}`）。读取时两者分开呈现，不把 Artifact 当作已确认的结论。
 
 ## 6. 使用约定
 
@@ -438,7 +465,7 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 | I2 理解机制与细节 | `Resolve` → `Traverse([m])` 及其 `ABOUT` 入边的 Content → `ReadEvidence` → `Extract`（设置细节）或 `Summarize`（机制要点） |
 | I3 组织结果并判断可比性 | `Resolve` → `Search(Content, kinds={Experiment}, where={evaluates, uses})` → `ReadEvidence`（按锚点读表）→ `Extract`（结果行）→ `Check`（切分、长度、口径）→ `MatrixConstruct` 或 `Rank`（`keep` 可比项）→ `Generate` |
 | I4 综合同一问题下的路线 | `Search(Concept, kinds={Issue})` → `Traverse` 取 `ABOUT` 它的主张与贡献 → `ReadEvidence` → `Extract`（路线要素）→ `MatrixConstruct`（Issue × Method）→ `Summarize` |
-| I5 核查主张的依据 | `Search(Content, kinds={Claim})` → `Traverse`（`SUPPORTED_BY`、`SUPPORTS` / `OPPOSES`）→ `ReadEvidence` → `Verify` → 需要留存时经增补表单写 Observation |
+| I5 核查主张的依据 | `Search(Content, kinds={Claim})` → `Traverse`（`SUPPORTED_BY`、`SUPPORTS` / `OPPOSES`）→ `ReadEvidence` → `Verify` → 需要留存时经 `Commit` 写 Observation |
 | I6 取得实现资源 | `Resolve` → `Traverse`（`IMPLEMENTS` 入边，当前无数据）或 `Search(Entity, kinds={Code, Model}, query)` → `ReadEvidence` → `Filter`（是否就是该实现）→ `Extract`（地址与设置） |
 
 ## 8. 本版不纳入
@@ -453,16 +480,20 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 
 ## 9. E09 实现对照
 
+模块都在 `experiments/e09/src/e09/` 下；依赖方向为 `use → read → utils`，`read` 另用 `write` 的视图部件。
+
 | 算子 | 模块 | 状态 |
 | --- | --- | --- |
-| `Commit` | `operators/commit/`，入口 `e09.commit` | 已实现，对齐冻结模型 |
-| `Resolve` | `operators/resolve.py` | 已实现 |
-| `ReadEvidence` | `operators/read_evidence.py` | 已实现 |
-| `Traverse` | `operators/get.py` 只覆盖空路径（Entity / Concept） | 待实现；对象视图扩展到 Content 与 Artifact |
-| `Search` | — | 待实现 |
-| Agent 算子与 Artifact | — | 待实现；图模型见 [Graph Model V2](./graph_model_v2.md) 第 8 节，写入见 [Commit 契约](./commit_contract.md) §7。增补表单引用 Artifact（`art` 前缀、以 Artifact 文档为 `basis`）的代码尚待补上 |
-| `operators/experiments.py` | — | 按旧模型实现，由 `Search` 取代后删除 |
+| `Commit` | `write/`，入口 `python -m e09.write` | 已实现：graph-doc → graph-plan / graph-result，经 graph-vc 提交 |
+| `Resolve` | `operators/resolve.py` | 已实现；目前只作为 `Commit` 查重的底层，没有对外入口 |
+| `Search` | `read/search.py`、`read/conditions.py` | 已实现，含 `type=Artifact` |
+| `Traverse` | `read/traverse.py` | 已实现，含 `USED` |
+| `ReadEvidence` | `read/read_evidence.py` | 已实现，可读 Artifact 文档 |
+| 读视图 | `read/view.py`；Artifact 的文档与过期在 `read/artifacts.py` | 已实现；`Search`、`Traverse`、`ReadEvidence` 的命令行入口为 `python -m e09.read` |
+| `Extract`、`Summarize`、`Generate`、`Check`、`Verify`、`Filter` | `use/operators.py`（各算子的 schema 与正文）、`use/write.py`（共同写入路径），入口 `python -m e09.use` | 已实现 |
+| `Rank`、`MatrixConstruct` | — | 待实现 |
+| 引用写法、Artifact 文档格式 | `utils/refs.py`、`utils/artifact_doc.py` | 读写两侧共用 |
 
-实现顺序跟随 I3：`Traverse` 与对象视图 → `Search` → Artifact 写入机制 → `Extract`、`Check`、`MatrixConstruct`、`Rank`、`Generate` → 其余 Agent 算子。
+测试在 `experiments/e09/tests/read/` 与 `tests/use/`，只在空的测试实例（`GRAPH_VC_TEST_NEO4J_URI`）上运行。neo4j-e09 中还没有 Artifact；Artifact 的约束与全文、向量索引在下一次写入时建立。
 
 **参考：** [S] Hai Lan et al. *AgenticScholar: Agentic Data Management with Pipeline Orchestration for Scholarly Corpora.* PACMMOD 4(2), Article 131, 2026（本地精读见 `references/papers/2026-AgenticScholar-reread/`）。

@@ -5,7 +5,7 @@
 #   make neo4j-down  停止 neo4j-e09（数据保留在 infra/neo4j-e09/data/）
 #   make check       环境自检：材料与入库文档目录、连库、版本与 edition、确认不是 v1 库
 #   make embed       建向量索引并补算向量（Resolve 的语义阶段用）；需要 embedding 服务，只补算文本变过的对象
-#   make test        写入路径的检验（tests/write/；设置 GRAPH_VC_TEST_NEO4J_URI 时另在测试实例上往返）
+#   make test        写入、读取与 Agent 算子的检验（tests/；读取与 Agent 算子只在设置 GRAPH_VC_TEST_NEO4J_URI 时于测试实例上运行）
 #   make lab         在本目录启动 JupyterLab
 #
 # 写入路径已改用 packages/graph-vc 与 packages/graph-doc：python -m e09.write（见 README）；重建目标待 graph-doc 数据就绪后加入。

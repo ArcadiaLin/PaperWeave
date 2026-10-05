@@ -29,7 +29,18 @@ packages = ["src/e09"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-include = ["src/e09/write/**/*.py", "src/e09/utils/schema.py", "tests/write/**/*.py"]
+include = [
+    "src/e09/write/**/*.py",
+    "src/e09/read/**/*.py",
+    "src/e09/use/**/*.py",
+    "src/e09/utils/schema.py",
+    "src/e09/utils/refs.py",
+    "src/e09/utils/artifact_doc.py",
+    "src/e09/utils/yamlfmt.py",
+    "tests/write/**/*.py",
+    "tests/read/**/*.py",
+    "tests/use/**/*.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "RUF"]

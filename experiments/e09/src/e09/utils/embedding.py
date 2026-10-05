@@ -7,6 +7,7 @@
 - Entity / Concept：名称、由 NameKey 装配的 alias，以及该类的文本字段（Entity：description；Concept：definition、text）。
   名称与 alias 也编进向量，是为了只给称呼、不给说明文字时语义阶段仍有可比的内容；
 - Content：text（没有名称）；
+- Artifact：title 与 abs（文档正文不编码，经 ReadEvidence 读取）；
 - 带 description 的关系（schema.DESCRIBED_RELS）：description，向量存在边上。
 note 不参与。
 """
@@ -25,7 +26,8 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "qwen3-embedding-8b")
 EMBED_DIM = 4096
 EMBED_BATCH = 32
 
-VECTOR_INDEXES = {"entity_vectors": "Entity", "concept_vectors": "Concept", "content_vectors": "Content"}   # 名称 -> 主 Label
+VECTOR_INDEXES = {"entity_vectors": "Entity", "concept_vectors": "Concept", "content_vectors": "Content",
+                  "artifact_vectors": "Artifact"}   # 名称 -> 主 Label
 REL_VECTOR_INDEX = "relation_vectors"   # 覆盖 DESCRIBED_RELS 全部类型的一个关系向量索引
 
 
@@ -64,10 +66,11 @@ def embedding_key(text: str) -> str:
 def sync_embeddings() -> int:
     """给缺向量或向量过期（文本改过、换了模型）的对象与关系补算；返回补算的个数。每次写入图谱后调用。"""
     fields = sorted({f for fs in TEXT_FIELDS.values() for f in fs})
-    rows = q(f"""MATCH (n:Entity|Concept|Content)
+    rows = q(f"""MATCH (n:Entity|Concept|Content|Artifact)
                  OPTIONAL MATCH (k:NameKey)-[:NAMES]->(n) WHERE k.raw <> n.name
                  WITH n, k ORDER BY k.raw
-                 RETURN n.id AS id, CASE WHEN n:Entity THEN 'Entity' WHEN n:Concept THEN 'Concept' ELSE 'Content' END AS family,
+                 RETURN n.id AS id, CASE WHEN n:Entity THEN 'Entity' WHEN n:Concept THEN 'Concept'
+                                         WHEN n:Content THEN 'Content' ELSE 'Artifact' END AS family,
                         n.name AS name, collect(k.raw) AS aliases, n.embedding_key AS key,
                         n {{{', '.join('.' + f for f in fields)}}} AS props
                  ORDER BY id""")
