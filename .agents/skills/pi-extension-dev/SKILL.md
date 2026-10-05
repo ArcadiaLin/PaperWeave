@@ -5,26 +5,38 @@ description: 开发 pi (pi-coding-agent) 的 extension，或在本项目的 pi-c
 
 # pi Extension 开发
 
-本 skill 不重复讲解如何开发 extension——本地 pi 源码仓库自带完整文档，开发时**直接引用这些文档**作为权威依据，不要凭记忆写 API。
+本 skill 不重复讲解如何开发 extension——本仓库内有 pi 上游源码的 clone（`references/repos/pi`，gitignored），自带完整文档，开发时**直接引用这些文档**作为权威依据，不要凭记忆写 API。
+
+使用前确认 clone 与本机 pi 版本一致：`git -C references/repos/pi log -1` 对比 `pi --version`，落后就 `git -C references/repos/pi pull`（远程是上游 `earendil-works/pi`）。pi 的 npm 安装包也自带同版本文档，位于 `$(npm root -g)/@earendil-works/pi-coding-agent/docs/`，可作为 clone 未同步时的备选。
 
 ## 权威文档（开发时必读）
 
-主文档（extension API、事件、工具、UI，约 3000 行）：
+主文档（extension API、事件、工具、UI）：
 
-- `~/projs/pi/packages/coding-agent/docs/extensions.md`
+- `references/repos/pi/packages/coding-agent/docs/extensions.md`
 
 配套文档（按需查阅）：
 
-- `~/projs/pi/packages/coding-agent/docs/custom-provider.md` — 自定义模型 provider
-- `~/projs/pi/packages/coding-agent/docs/packages.md` — 把 extension 打包成 npm/git 包分发
-- `~/projs/pi/packages/coding-agent/docs/tui.md` — TUI 组件 API（自定义渲染、overlay）
-- `~/projs/pi/packages/coding-agent/docs/rpc.md` — RPC 模式与 extension UI 协议
-- `~/projs/pi/packages/coding-agent/docs/session-format.md` — Session 存储与 SessionManager
-- `~/projs/pi/packages/coding-agent/docs/keybindings.md` — 快捷键 id 列表
+- `references/repos/pi/packages/coding-agent/docs/mcp.md` — MCP 服务器配置（`pi mcp` 命令、`mcp.json`、exposure）
+- `references/repos/pi/packages/coding-agent/docs/codemode.md` — codemode 工具：模型写 JS 脚本在沙箱中调用其他工具
+- `references/repos/pi/packages/coding-agent/docs/custom-provider.md` — 自定义模型 provider
+- `references/repos/pi/packages/coding-agent/docs/packages.md` — 把 extension 打包成 npm/git 包分发
+- `references/repos/pi/packages/coding-agent/docs/tui.md` — TUI 组件 API（自定义渲染、overlay）
+- `references/repos/pi/packages/coding-agent/docs/rpc.md` — RPC 模式与 extension UI 协议（细分主题见 rpc-commands.md、rpc-extension-ui.md）
+- `references/repos/pi/packages/coding-agent/docs/session-format.md` — Session 存储与 SessionManager
+- `references/repos/pi/packages/coding-agent/docs/keybindings.md` — 快捷键 id 列表
+- `references/repos/pi/packages/coding-agent/docs/skills.md`、`slash-commands.md`、`configuration.md` — skills / 斜杠命令 / 配置
 
 ## 示例库
 
-`~/projs/pi/packages/coding-agent/examples/extensions/` 下有 70+ 个可运行示例（hello、todo、permission-gate、plan-mode、ssh、subagent 等）。写新 extension 时优先找相近示例参考，不要从零发明结构。
+`references/repos/pi/packages/coding-agent/examples/extensions/` 下有 80 个可运行示例（hello、todo、permission-gate、plan-mode、ssh、subagent 等）。写新 extension 时优先找相近示例参考，不要从零发明结构。
+
+## 1.0 起的新 API 面（extensions.md 中有详解）
+
+- `pi.registerMcpServer()` / `pi.unregisterMcpServer()` / `pi.getMcpServers()`，及 `mcp_servers_change` 事件——extension 可注册会话级 MCP 服务器
+- 工具 `exposure` 分级（`codemode` / `deferred` / callable）与 `namespace` 分组，控制工具对模型和 codemode 脚本的可见性
+- 工具声明 `outputSchema` 并返回 `structuredContent` 后，codemode 脚本等程序化调用方能拿到结构化结果
+- 工具 `annotations`（`readOnlyHint` 等 MCP 语义），供权限类 extension 做审批判断
 
 ## 加载与测试位置
 
