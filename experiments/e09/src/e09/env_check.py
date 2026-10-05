@@ -9,7 +9,7 @@ import sys
 
 from neo4j import GraphDatabase
 
-from .config import NEO4J_AUTH, NEO4J_DB, NEO4J_URI, PAPERS, SEEDS
+from .config import NEO4J_AUTH, NEO4J_DB, NEO4J_URI, DOCS, PAPERS
 
 V1_LABELS = {"MethodConcept", "ClaimConcept", "Resource", "ResourceRecord"}   # 出现即说明连到了 v1 库
 
@@ -34,10 +34,10 @@ def check_graph(out=sys.stdout) -> list[str]:
 
 def check_files() -> list[str]:
     papers = sorted(p.name for p in PAPERS.iterdir() if (p / "paper.md").is_file()) if PAPERS.is_dir() else []
-    seeds = sorted(p.name for p in SEEDS.glob("*.yml"))
+    docs = sorted(p.name for p in DOCS.glob("*.yml"))
     print(f"论文材料 {len(papers)} 篇：{papers}")
-    print(f"种子 {seeds}")
-    return [] if papers and seeds else [f"材料或种子缺失：{PAPERS}、{SEEDS}"]
+    print(f"入库文档 {docs}")
+    return [] if papers and docs else [f"材料或入库文档缺失：{PAPERS}、{DOCS}"]
 
 
 def main() -> int:
