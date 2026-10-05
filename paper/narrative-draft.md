@@ -1,3 +1,5 @@
+# PaperWeave: A Data Management System for Paper-Derived Research Experience for AI Agents
+
 # 论文草稿
 
 中文记叙事意图；英文代码块留候选短句和用语。两者都用于推进草稿，随设计继续调整。
@@ -8,7 +10,7 @@
 
 # Introduction
 
-## Why：为什么需要管理这些积累
+## Why：
 
 先讲两点背景：
 
@@ -73,7 +75,7 @@ C4. Track changes and independent research states.
 
 ## Claim + Contributions：总体方法
 
-一句话定位：面向外部研究 Agent，管理论文知识、使用产物和版本化项目视图。
+面向外部 Agent，管理论文知识、使用产物和版本化项目视图。
 
 ```text
 We propose a knowledge-graph-based middleware combining semantic knowledge
