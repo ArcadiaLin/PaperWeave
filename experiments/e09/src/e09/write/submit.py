@@ -17,6 +17,7 @@ from graph_vc import Changeset, ChangesetError, CommitRecord, ConflictError, Gra
 from ..utils.schema import DERIVED_FIELDS, NODE_LABELS, PREFIX, REL_TYPES
 from .checks import check_state, touched
 from .problems import Problem
+from .review import delete_impact, review
 from .translate import Context, translate
 
 
@@ -51,7 +52,7 @@ def prepare(text: str, ctx: Context, ids: Mapping[str, str] | None = None) -> Pr
 
     ids = dict(ids or {})
     translation = translate(doc, ctx, ids)
-    problems = list(translation.problems)
+    problems = list(translation.problems) + review(doc, ctx.deduper)
     if any(p.severity == "error" for p in problems):
         return Prepared(doc, None, tuple(problems), ids)
 
@@ -73,6 +74,7 @@ def prepare(text: str, ctx: Context, ids: Mapping[str, str] | None = None) -> Pr
 
     refs = translation.refs
     problems += check_state(after, touched(changeset), lambda node_id: refs.get(node_id, node_id))
+    problems += delete_impact(changeset, {node_id: node.labels for node_id, node in local.nodes.items()})
     return Prepared(doc, changeset, tuple(problems), ids)
 
 
@@ -100,7 +102,7 @@ def apply(
         source=ctx.source,
         base=base,
         input=text,
-        meta={"ids": ids},
+        meta={"ids": ids, "dedup": ctx.deduper is not None},
     )
     return prepared, record
 

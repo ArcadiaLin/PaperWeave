@@ -47,6 +47,7 @@ from ..utils.schema import (
 )
 from .problems import Problem
 from .reader import Reader
+from .review import Deduper
 from .view import edge_readonly, material_of, node_readonly
 
 _MISSING = object()
@@ -55,12 +56,13 @@ _MISSING = object()
 @dataclass(frozen=True, slots=True)
 class Context:
     """一次写入的环境：读取现状的入口、来源标签（记入 NameKey.registered_from 与提交的 source）、
-    形成时间（``formed_at``），以及材料路径的根目录。"""
+    形成时间（``formed_at``）、材料路径的根目录，以及查重的入口（``None`` 表示不查重，如种子批量入库）。"""
 
     reader: Reader
     source: str
     at: str
     material_root: Path
+    deduper: Deduper | None = None
 
 
 @dataclass(frozen=True, slots=True)

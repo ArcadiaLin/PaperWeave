@@ -7,21 +7,32 @@ packages/graph-vc（变更集与版本记录）；这里只放 E09 数据模型�
 from .checks import check_state, touched
 from .problems import Problem
 from .reader import MemoryReader, Neo4jReader, Reader
+from .report import plan, result, summarize
+from .review import Candidate, Deduper, Lookup, ResolveDeduper, delete_impact, review
 from .submit import Prepared, allocate_ids, apply, prepare
 from .translate import Context, Translation, translate
 
 __all__ = [
+    "Candidate",
     "Context",
+    "Deduper",
+    "Lookup",
     "MemoryReader",
     "Neo4jReader",
     "Prepared",
     "Problem",
     "Reader",
+    "ResolveDeduper",
     "Translation",
     "allocate_ids",
     "apply",
     "check_state",
+    "delete_impact",
+    "plan",
     "prepare",
+    "result",
+    "review",
+    "summarize",
     "touched",
     "translate",
 ]

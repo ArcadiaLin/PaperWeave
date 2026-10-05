@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from e09.write import Context, MemoryReader, Prepared, allocate_ids, prepare
+from e09.write import Context, Deduper, MemoryReader, Prepared, allocate_ids, prepare
 from graph_vc import GraphState
 
 AT = "2026-10-05T12:00:00+00:00"
@@ -113,9 +113,10 @@ class MemoryGraph:
         self.root = root
         self.state = GraphState()
         self.counters = Counters()
+        self.deduper: Deduper | None = None
 
     def context(self, source: str = "test") -> Context:
-        return Context(MemoryReader(self.state), source, AT, self.root)
+        return Context(MemoryReader(self.state), source, AT, self.root, self.deduper)
 
     def dry_run(self, text: str, source: str = "test") -> Prepared:
         return prepare(text, self.context(source))

@@ -62,6 +62,8 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `write/translate` | graph-doc → 物理目标状态：kind → Label，name / aliases → NameKey（`id` 即 `key`），Paper 的 material → Material，`FROM.material_ref` 与 `source_refs` 换成材料 id，补 `formed_by` / `formed_at`、`exp_key`、`content_key`，核对只读字段 |
 | `write/checks` | 写入后状态的模型检查：字段、必需关系、端点规则（改 kind 后原有的边一并复核） |
 | `write/submit` | `prepare`（dry_run，只读）与 `apply`（分配 id 后经 graph-vc 单事务提交）；`write/reader` 提供内存与 Neo4j 两种读取 |
+| `write/review` | 需要外部判断的检查：新 Entity / Concept 经 Resolve（写入模式）查重，未在 `confirm.<引用>.distinct_from` 中判定的候选阻塞写入；删除时提示一并删除的入边 |
+| `write/report` | 返回给 Agent 的 graph-plan（状态、按节点列出的修改、阻塞项及候选与改法、提示）与 graph-result（提交 id、`$` 引用到 id 的映射、计数） |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
 | `operators/experiments` | Experiments：按被测对象（任一命中）、数据集（严格，或沿 PART_OF / VERSION_OF 展开）、指标与论文范围取实验报告；纯结构匹配，不走语义通道；返回参与方的角色、变体与来源性质、条件、材料定位，以及 expandable / role_missing 诊断 |
