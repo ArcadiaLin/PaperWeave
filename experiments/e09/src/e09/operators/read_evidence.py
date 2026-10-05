@@ -14,8 +14,8 @@ source_ref 写作 `<material_id>::<章节>::<start>:<end>`（graph_model_v2.md �
 import hashlib
 
 from ..config import DATA
-from ..form import LOCATOR
 from ..utils.graph import q
+from ..utils.schema import LOCATOR
 
 
 def read_evidence(source_refs: list[str]) -> dict:

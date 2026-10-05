@@ -4,6 +4,8 @@
 不表达资源版本与切分，不建 Metric；Content 为 Claim、Experiment、Contribution、Observation，另有 Material、IngestBatch。
 """
 
+import re
+
 KINDS = {"Entity": ["Paper", "Dataset", "Code", "Model", "Benchmark", "Tool"],          # §2.1
          "Concept": ["Method", "Task", "Issue", "Proposition"],                         # §3.1
          "Content": ["Claim", "Experiment", "Contribution", "Observation"]}             # §4.1
@@ -51,4 +53,6 @@ FULLTEXT = {
     "concept_texts": ("Concept", ["definition", "text"], "english"),   # 术语型写 definition，陈述型写 text
     "content_texts": ("Content", ["text"], "english"),
 }
+# 来源引用 <material_id>::<章节>::<start>:<end> 中 :: 之后的定位部分，行号从 1 起（graph_model_v2.md §1）
+LOCATOR = re.compile(r"(?P<section>.+)::(?P<start>\d+):(?P<end>\d+)")
 TEXT_FIELDS = {"Entity": ["description"], "Concept": ["definition", "text"], "Content": ["text"]}   # 文本通道与向量共用的字段
