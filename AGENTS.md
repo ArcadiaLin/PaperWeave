@@ -5,17 +5,19 @@
 This repository supports an ongoing research project. The tentative publication
 target remains **SIGMOD**.
 
-The current research direction (updated 2026-10-04) is:
+The current research direction (updated 2026-10-05) is:
 
-> **Data-management middleware for persistent paper-derived knowledge and
-> its use artifacts in CS research workflows (tentative).**
+> **Data-management middleware for persistent paper-derived knowledge,
+> its use artifacts, and versioned project knowledge views in CS research
+> workflows.**
 
 The current core question is:
 
 > **How can a semantic data model and composable operators support the
 > representation, querying, composition, and maintenance of accumulated
-> paper-derived knowledge and its use artifacts for external agents in bounded
-> CS research workloads?**
+> paper-derived knowledge and its use artifacts through project knowledge views
+> and recorded version histories for external agents in bounded CS research
+> workloads?**
 
 The motivating application remains domain-specific Agent Memory. Papers and
 associated materials are sources; the managed objects are accumulated knowledge,
@@ -64,6 +66,23 @@ mechanisms support re-examination; they do not imply automatic incremental view
 maintenance or semantic reassessment. Agent operators and Artifact persistence
 remain design contracts awaiting implementation and evaluation.
 
+**Project knowledge views, complete submission records, and version history
+are required parts of the research and system design** (confirmed 2026-10-05).
+Treat them as integral to knowledge management and use, including in the
+introduction's motivation, challenges, proposed design, and the overall paper
+narrative. They are not optional extensions or future-work candidates.
+Project views select and organize knowledge, artifacts, and required context
+from a defined baseline for continued use within a project. Submission records
+and version history must account for the changes establishing and evolving that
+state, including knowledge ingestion and Artifact writes, and support historical
+inspection and independent project or branch evolution. Distinguish an artifact's
+input lineage from a knowledge state's commit ancestry. IngestBatch is the
+starting point for complete change recording; current batch statistics alone
+do not provide these version semantics. View-selection algorithms, snapshot or
+delta storage, submission granularity, branch interfaces, and integration rules
+remain to be specified and evaluated. Required scope does not mean these
+mechanisms are already implemented or their effectiveness established.
+
 The technical direction is to give the data model and operators explicit
 database semantics: types, identity and provenance rules, constraints, input and
 output contracts, composition, and mappings to backend execution. Property graphs
@@ -87,10 +106,12 @@ workload-driven design and system evaluation; its internal LLM operators are not
 the responsibility boundary adopted here, and its relevance does not establish
 this project's novelty or effectiveness.
 
-The specific challenges, technical mechanism, task scope, and evaluation
-protocol remain to be agreed. Do not treat candidate ideas from discussion as
-settled requirements or assume that additional agents or workflow complexity
-constitute a research contribution.
+The required scope includes the semantic model and operators, persistent use
+artifacts and provenance, project knowledge views, and submission/version
+history. Specific algorithms, lifecycle contracts, benchmark tasks, and the
+evaluation protocol remain to be refined. Other candidate ideas from discussion
+are not automatically settled requirements; additional agents or workflow
+complexity do not by themselves constitute a research contribution.
 
 ## Research Scope and Evaluation
 
@@ -108,6 +129,11 @@ These are areas to refine, not a requirement to implement all of them. Neither a
 full ReAct agent nor a particular operator architecture is assumed necessary.
 P4A is inherited code and task-design material, not an independently validated
 benchmark for the new direction.
+
+Project-view construction and continued use, complete change recording, and
+versioned state access are required evaluation areas. Select concrete workloads
+for them alongside the knowledge-utilization tasks; their benchmark instances
+and quality criteria still require agreement.
 
 Evaluation principles:
 
