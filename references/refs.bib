@@ -288,3 +288,50 @@
                Cypher 只读核心片段（模式匹配、过滤、表上关系操作）的指称语义，
                作为定义算子语义与验证执行正确性的底层语义依据。}
 }
+
+% 版本化项目知识管理的引用；对应 docs/experiments/e09/operators/commit.md §11。
+% 本地阅读材料位于 papers/graph_version_control/<citekey>/。
+
+@article{2026-Git4Data,
+  title     = {{Git4Data}: Database-Native Version Control for {AI} Agents},
+  author    = {Gou, Hongshen and Zhang, Zuyu and Sun, Yuze and Xu, Peng and
+               Tian, Feng and Wang, Long and Wang, Jianguo},
+  journal   = {arXiv preprint arXiv:2609.02106},
+  year      = {2026},
+  eprint    = {2609.02106},
+  version   = {v1},
+  doi       = {10.48550/arXiv.2609.02106},
+  url       = {https://arxiv.org/abs/2609.02106v1},
+  note      = {支撑 docs/experiments/e09/operators/commit.md 第 11 节：
+               项目知识版本的快照、分支、差异与整合契约参照；按 arXiv v1 预印本登记。}
+}
+
+@inproceedings{2013-GraphSnapshot,
+  title     = {Efficient Snapshot Retrieval over Historical Graph Data},
+  author    = {Khurana, Udayan and Deshpande, Amol},
+  booktitle = {2013 IEEE 29th International Conference on Data Engineering (ICDE)},
+  pages     = {997--1008},
+  publisher = {IEEE},
+  year      = {2013},
+  doi       = {10.1109/ICDE.2013.6544892},
+  eprint    = {1207.5777},
+  url       = {https://doi.org/10.1109/ICDE.2013.6544892},
+  note      = {支撑 docs/experiments/e09/operators/commit.md 第 11 节：
+               历史知识状态恢复与逻辑历史、物理存储分离的设计参照；
+               按 ICDE 2013 会议论文登记，本地精读依据 2012 年技术报告 arXiv:1207.5777v1。}
+}
+
+@misc{2020-TerminusDB,
+  title        = {Succinct Data Structures and Delta Encoding for Modern Databases},
+  author       = {van Otterdijk, Matthijs and Mendel-Gleason, Gavin and Feeney, Kevin},
+  howpublished = {TerminusDB whitepaper},
+  year         = {2020},
+  month        = {1},
+  url          = {https://terminusdb.org/blog/2023-01-05-succinct-data-structures-for-modern-databases/},
+  urldate      = {2026-10-05},
+  note         = {支撑 docs/experiments/e09/operators/commit.md 第 10 节（TerminusDB 调研）：不可变
+                  succinct 层 + 正/负平面 delta、层深压实（rollup/squash）、label 即分支指针、
+                  写事务先校验再推进 head 的设计来源。提交图即数据、单父 rebase、changed-set 等
+                  机制依据源码 references/repos/terminusdb（不入库的本地 clone）与官方文档
+                  terminusdb.org/docs/graphs-explanation/，均无独立出版物，附于此条目。}
+}
