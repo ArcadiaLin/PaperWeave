@@ -1,0 +1,36 @@
+[project]
+name = "graph-doc"
+version = "0.1.0"
+description = "graph-doc：读写同形的 YAML 子图，解析并与库中现状求差得到 graph-vc 变更集"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "graph-vc",
+    "pyyaml>=6,<7",
+]
+
+[tool.uv.sources]
+graph-vc = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/graph_doc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "RUF"]
+# 注释与文档字符串用中文，全角标点是正常写法。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["graph_doc", "graph_vc"]
