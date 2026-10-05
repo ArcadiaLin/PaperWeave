@@ -10,7 +10,13 @@ dependencies = [
     "neo4j>=5.28,<7",   # 图谱读写
     "pyyaml>=6,<7",     # 种子与入库增量
     "httpx>=0.28,<1",   # embedding 服务（vLLM 的 /v1/embeddings），Resolve 的语义阶段
+    "graph-vc",         # 写入路径：变更集与版本记录
+    "graph-doc",        # 写入路径：graph-doc 解析与求差
 ]
+
+[tool.uv.sources]
+graph-vc = { workspace = true }
+graph-doc = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -18,3 +24,17 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/e09"]
+
+# 新规范（2026-10-05 起）的代码受 ruff 约束；早期代码保持原样，改写时再纳入。
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+include = ["src/e09/write/**/*.py", "src/e09/utils/schema.py", "tests/write/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "RUF"]
+# 注释与文档字符串用中文，全角标点是正常写法。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["e09", "graph_doc", "graph_vc"]

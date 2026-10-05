@@ -51,6 +51,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     src/e09/operators/    中间件算子，一个算子一个文件，文件名即设计中的算子名
     src/e09/utils/        算子共用的底层部件，本身不是算子
     tests/                读取算子与 I3 参考答案的检验：连 neo4j-e09 现有库，库没起时跳过
+    tests/write/          写入路径的检验：内存状态上的场景；设置 GRAPH_VC_TEST_NEO4J_URI 时另在测试实例上往返
     i3/                   首个 I3 实例：questions.yml（三组共同看到的问题与答案格式）、reference.yml（参考答案）
 
 | 位置 | 内容 |
@@ -58,11 +59,14 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
 | `config` | 路径与连接参数 |
 | `env_check` | 环境自检（`make check`） |
 | `tools` | 外部 Agent（pi）调用读取算子的命令行入口，I3 使用 |
+| `write/translate` | graph-doc → 物理目标状态：kind → Label，name / aliases → NameKey（`id` 即 `key`），Paper 的 material → Material，`FROM.material_ref` 与 `source_refs` 换成材料 id，补 `formed_by` / `formed_at`、`exp_key`、`content_key`，核对只读字段 |
+| `write/checks` | 写入后状态的模型检查：字段、必需关系、端点规则（改 kind 后原有的边一并复核） |
+| `write/submit` | `prepare`（dry_run，只读）与 `apply`（分配 id 后经 graph-vc 单事务提交）；`write/reader` 提供内存与 Neo4j 两种读取 |
 | `operators/resolve` | Resolve：id → alias → 语义三级解析，read / write 两种模式；Entity 与 Concept |
 | `operators/get` | Get：对象视图（属性、由 NameKey 装配的 aliases、identifiers），不展开关系 |
 | `operators/experiments` | Experiments：按被测对象（任一命中）、数据集（严格，或沿 PART_OF / VERSION_OF 展开）、指标与论文范围取实验报告；纯结构匹配，不走语义通道；返回参与方的角色、变体与来源性质、条件、材料定位，以及 expandable / role_missing 诊断 |
 | `operators/read_evidence` | ReadEvidence：按 `<material_id>::<章节>::<start>:<end>` 读材料行，核对内容哈希，逐项给出 available / missing / error |
-| `utils/schema` | graph_model_v2 的机器可读部分：kind、命名空间唯一性、关系端点、id 前缀、约束、全文索引、来源引用的定位格式 |
+| `utils/schema` | graph_model_v2 的机器可读部分：kind、各 kind 的字段与必需项、关系端点与属性、命名空间唯一性、id 前缀、约束、全文索引、来源引用的定位格式 |
 | `utils/graph` | 连接、只读查询 `q`、建约束与全文索引 |
 | `utils/namekey` | 规范化配置 `name-key-v1` 与精确键 |
 | `utils/embedding` | 向量服务（与 e08 共用 Qwen3-Embedding-8B）、向量索引与补算（`make embed`）：Entity、Concept、Content 的文本与带 `description` 的关系都建向量 |

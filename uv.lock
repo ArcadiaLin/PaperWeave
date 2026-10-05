@@ -247,6 +247,8 @@ name = "cacheplan-e09"
 version = "0.1.0"
 source = { editable = "experiments/e09" }
 dependencies = [
+    { name = "graph-doc" },
+    { name = "graph-vc" },
     { name = "httpx" },
     { name = "neo4j" },
     { name = "pyyaml" },
@@ -254,6 +256,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "graph-doc", editable = "packages/graph-doc" },
+    { name = "graph-vc", editable = "packages/graph-vc" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "neo4j", specifier = ">=5.28,<7" },
     { name = "pyyaml", specifier = ">=6,<7" },
