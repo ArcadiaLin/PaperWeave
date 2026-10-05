@@ -32,7 +32,11 @@ cs = Changeset(
 from neo4j import GraphDatabase
 from graph_vc import VersionedGraph
 
-graph = VersionedGraph(GraphDatabase.driver(uri, auth=auth), file_root=repo_root)
+graph = VersionedGraph(
+    GraphDatabase.driver(uri, auth=auth),
+    file_root=repo_root,
+    unversioned_props=frozenset({"embedding", "embedding_key"}),  # 派生属性，提交后由上层补算
+)
 graph.setup()  # 约束与 main 分支，可重复调用
 ids = graph.allocate_ids("method", 2)  # ["method_0023", "method_0024"]
 record = graph.commit(cs, author="claude", message="…", source="commit-tool", meta={"rounds": 2})
@@ -55,13 +59,14 @@ graph.snapshot()  # 当前受版本管理的状态（GraphState）
 
 `GraphState.apply()` 在内存中执行同样的前提核对与修改，用于测试与以后的 `AsOf`。
 
+`unversioned_props` 列出节点与关系上不受版本管理的属性（如检索用的向量）：变更集不能写它们，核对改前状态与 `snapshot()` 都忽略它们。它们随节点或关系一起被删除；修改节点时保持原值，是否过期由上层判断并补算；重放或撤销后需要重新补算。
+
 ## 已知限制
 
 - 节点按 `id` 匹配时不带 Label，走全库扫描；论文规模下可以接受，以后可让变更集携带 Label 以使用索引。
-- 没有 `id` 的节点（如当前的 `NameKey`）不受版本管理；删除节点时若它连着这类节点，提交被拒绝。
+- 没有 `id` 的节点不受版本管理；删除节点时若它连着这类节点，提交被拒绝。上层应给要纳入版本管理的节点都赋 `id`（如 `NameKey` 以其 `key` 为 `id`）。
 - 计数器分配的 id 不复用；首次使用某前缀时从库中已用的最大序号起算。
 - 删除节点时会一并删掉指向它的 `TOUCHED`；它的历史仍在各提交的 `changeset` 与 `removed` 中。
-- 派生字段（向量等）不在变更集中，由上层在提交后补算。
 
 ## 测试
 

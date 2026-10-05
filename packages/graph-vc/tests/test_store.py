@@ -229,3 +229,35 @@ def test_snapshot_excludes_version_records(graph: VersionedGraph) -> None:
         EdgeKey("exp_0001", "EVALUATES", "method_0016"),
         EdgeKey("method_0016", "BROADER", "method_0004"),
     }
+
+
+def test_unversioned_properties_are_ignored(driver) -> None:
+    graph = VersionedGraph(driver, unversioned_props=frozenset({"embedding"}))
+    graph.setup()
+    try:
+        seed(graph)
+        before = graph.snapshot()
+        # 提交之后由上层补算的派生属性
+        driver.execute_query("MATCH (n {id: 'method_0004'}) SET n.embedding = [0.1, 0.2]")
+        driver.execute_query("MATCH ({id: 'exp_0001'})-[r:EVALUATES]->() SET r.embedding = [0.3]")
+        assert graph.snapshot() == before
+
+        with pytest.raises(ChangesetError):
+            graph.commit(
+                Changeset(nodes=(NodeChange.update("method_0016", M, {"embedding": None}, {"embedding": [1.0]}),)),
+                author="x",
+            )
+        # 改前状态不含派生属性，修改与删除照常通过核对
+        graph.commit(edit(), author="claude")
+        assert graph.snapshot() == before.apply(edit())
+        evaluates = driver.execute_query(
+            "MATCH ({id: 'exp_0001'})-[r:EVALUATES]->({id: 'method_0016'}) RETURN r.embedding AS e"
+        ).records
+        assert evaluates[0]["e"] == [0.3]
+    finally:
+        driver.execute_query("MATCH (n) DETACH DELETE n")
+
+
+def test_id_cannot_be_unversioned(driver) -> None:
+    with pytest.raises(ValueError):
+        VersionedGraph(driver, unversioned_props=frozenset({"id"}))

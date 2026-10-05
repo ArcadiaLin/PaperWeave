@@ -139,12 +139,14 @@ class Changeset:
         *,
         node_labels: frozenset[str] | None = None,
         rel_types: frozenset[str] | None = None,
+        unversioned_props: frozenset[str] = frozenset(),
     ) -> None:
         """检查与库状态无关的合法性；不合法时抛出 :class:`ChangesetError`。
 
-        ``node_labels`` / ``rel_types`` 给出时，Label 与关系类型必须在其中。
+        ``node_labels`` / ``rel_types`` 给出时，Label 与关系类型必须在其中；
+        ``unversioned_props`` 中的属性不受版本管理，不能出现在变更集里。
         """
-        problems = _validate(self, node_labels, rel_types)
+        problems = _validate(self, node_labels, rel_types, unversioned_props)
         if problems:
             raise ChangesetError(problems)
 
@@ -246,7 +248,12 @@ def _props_diff_from_dict(d: Mapping[str, Any]) -> tuple[Properties, Properties]
 # ── 校验 ──────────────────────────────────────────────────────────────
 
 
-def _validate(cs: Changeset, node_labels: frozenset[str] | None, rel_types: frozenset[str] | None) -> list[str]:
+def _validate(
+    cs: Changeset,
+    node_labels: frozenset[str] | None,
+    rel_types: frozenset[str] | None,
+    unversioned: frozenset[str],
+) -> list[str]:
     problems: list[str] = []
     ops: dict[str, Op] = {}
 
@@ -268,7 +275,7 @@ def _validate(cs: Changeset, node_labels: frozenset[str] | None, rel_types: froz
                 problems += _check_labels(where, labels, node_labels)
         for props in (n.before, n.after):
             if props is not None:
-                problems += _check_props(where, props, allow_none=n.op == "update")
+                problems += _check_props(where, props, allow_none=n.op == "update", unversioned=unversioned)
         if n.op == "update":
             problems += _check_update(
                 where, n.before or {}, n.after or {}, labels_changed=n.labels_before != n.labels_after
@@ -291,7 +298,7 @@ def _validate(cs: Changeset, node_labels: frozenset[str] | None, rel_types: froz
             problems.append(f"{where}: relationship type {e.key.type} is not allowed")
         for props in (e.before, e.after):
             if props is not None:
-                problems += _check_props(where, props, allow_none=e.op == "update")
+                problems += _check_props(where, props, allow_none=e.op == "update", unversioned=unversioned)
         if e.op == "update":
             problems += _check_update(where, e.before or {}, e.after or {}, labels_changed=False)
         # 端点：边存在时两端都在；同一变更集里删除的节点不能再挂新边，新建的节点不可能有旧边。
@@ -324,13 +331,15 @@ def _check_labels(where: str, labels: frozenset[str], allowed: frozenset[str] | 
     return problems
 
 
-def _check_props(where: str, props: Mapping[str, Any], *, allow_none: bool) -> list[str]:
+def _check_props(where: str, props: Mapping[str, Any], *, allow_none: bool, unversioned: frozenset[str]) -> list[str]:
     problems = []
     for key, value in props.items():
         if not isinstance(key, str) or not IDENTIFIER.match(key):
             problems.append(f"{where}: invalid property name {key!r}")
         elif key == "id":
             problems.append(f"{where}: 'id' is the node identity and cannot appear among properties")
+        elif key in unversioned:
+            problems.append(f"{where}: property {key} is not versioned and cannot appear in a changeset")
         elif value is None:
             if not allow_none:
                 problems.append(f"{where}: property {key} is None; omit absent properties")

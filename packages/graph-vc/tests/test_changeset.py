@@ -122,6 +122,19 @@ def test_vocabulary_restricts_labels_and_types() -> None:
         cs.validate(rel_types=frozenset({"S"}))
 
 
+def test_unversioned_properties_cannot_be_written() -> None:
+    unversioned = frozenset({"embedding"})
+    Changeset(nodes=(NodeChange.create("x", ["A"], {"name": "x"}),)).validate(unversioned_props=unversioned)
+    for cs in (
+        Changeset(nodes=(NodeChange.create("x", ["A"], {"embedding": [0.1]}),)),
+        Changeset(nodes=(NodeChange.update("x", ["A"], {"embedding": None}, {"embedding": [0.1]}),)),
+        Changeset(edges=(EdgeChange.delete("x", "R", "y", {"embedding": [0.1]}),)),
+    ):
+        with pytest.raises(ChangesetError) as err:
+            cs.validate(unversioned_props=unversioned)
+        assert any("not versioned" in p for p in err.value.problems)
+
+
 def test_empty_list_and_bool_lists_are_storable() -> None:
     Changeset(nodes=(NodeChange.create("x", ["A"], {"a": [], "b": [True, False], "c": 2.5}),)).validate()
 

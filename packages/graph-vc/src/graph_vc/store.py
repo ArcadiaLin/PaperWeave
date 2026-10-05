@@ -11,6 +11,9 @@
 
 版本记录占用 ``Commit``、``Branch``、``IdCounter`` 三个 Label 与 ``PARENT``、``TOUCHED`` 两种关系，
 变更集不能触及它们；:meth:`VersionedGraph.snapshot` 也不包含它们。需要 Neo4j 5.26 及以上（动态 Label）。
+
+``unversioned_props`` 声明的属性（如检索用的向量）由上层在提交后补算，不受版本管理：
+变更集不能写它们，核对改前状态与 :meth:`VersionedGraph.snapshot` 都忽略它们。
 """
 
 from __future__ import annotations
@@ -67,7 +70,8 @@ class VersionedGraph:
     """带版本记录的图写入入口。
 
     ``file_root`` 是变更集中 :class:`~graph_vc.changeset.FileRef` 相对路径的根目录；
-    ``node_labels`` / ``rel_types`` 给出时，变更集只能使用其中的 Label 与关系类型。
+    ``node_labels`` / ``rel_types`` 给出时，变更集只能使用其中的 Label 与关系类型；
+    ``unversioned_props`` 是节点与关系上不受版本管理的属性名。
     """
 
     def __init__(
@@ -78,13 +82,17 @@ class VersionedGraph:
         file_root: Path | None = None,
         node_labels: frozenset[str] | None = None,
         rel_types: frozenset[str] | None = None,
+        unversioned_props: frozenset[str] = frozenset(),
         clock: Callable[[], datetime] | None = None,
     ):
+        if "id" in unversioned_props:
+            raise ValueError("'id' is the node identity and is always versioned")
         self._driver = driver
         self._database = database
         self._file_root = file_root
         self._node_labels = node_labels
         self._rel_types = rel_types
+        self._unversioned = frozenset(unversioned_props)
         self._clock = clock or (lambda: datetime.now(UTC))
 
     # ── 初始化与 id ───────────────────────────────────────────────────
@@ -135,7 +143,9 @@ class VersionedGraph:
         """
         if not changeset:
             raise ChangesetError(["changeset is empty"])
-        changeset.validate(node_labels=self._node_labels, rel_types=self._rel_types)
+        changeset.validate(
+            node_labels=self._node_labels, rel_types=self._rel_types, unversioned_props=self._unversioned
+        )
         self._check_files(changeset)
         draft = _Draft(
             branch=branch,
@@ -147,6 +157,7 @@ class VersionedGraph:
             input=input,
             meta=dict(meta or {}),
             changeset=changeset,
+            unversioned=self._unversioned,
         )
         with self._session() as session:
             return session.execute_write(_commit, draft)
@@ -187,7 +198,7 @@ class VersionedGraph:
         return [_record_from_props(r["c"]) for r in records]
 
     def snapshot(self) -> GraphState:
-        """当前受版本管理的状态：带 ``id`` 的非版本记录节点，以及它们之间的非版本记录关系。"""
+        """当前受版本管理的状态：带 ``id`` 的非版本记录节点，以及它们之间的非版本记录关系；不含不受版本管理的属性。"""
         nodes = self._read(
             """MATCH (n) WHERE n.id IS NOT NULL AND none(l IN labels(n) WHERE l IN $labels)
                RETURN n.id AS id, labels(n) AS labels, properties(n) AS props""",
@@ -201,7 +212,7 @@ class VersionedGraph:
             labels=_RESERVED_LABELS,
             types=_RESERVED_TYPES,
         )
-        return _state_from_rows(nodes, edges)
+        return _state_from_rows(nodes, edges, self._unversioned)
 
     # ── 内部 ──────────────────────────────────────────────────────────
 
@@ -249,6 +260,7 @@ class _Draft:
     input: str | None
     meta: dict[str, Any]
     changeset: Changeset
+    unversioned: frozenset[str]
 
 
 def _allocate(tx: ManagedTransaction, prefix: str, count: int) -> int:
@@ -282,7 +294,7 @@ def _commit(tx: ManagedTransaction, draft: _Draft) -> CommitRecord:
     if lock is None:
         raise GraphVCError(f"unknown branch {draft.branch!r}; call setup() first")
 
-    conflicts = check_preconditions(cs, _fetch_state(tx, cs))
+    conflicts = check_preconditions(cs, _fetch_state(tx, cs, draft.unversioned))
     if conflicts:
         raise ConflictError(conflicts)
 
@@ -327,7 +339,7 @@ def _commit(tx: ManagedTransaction, draft: _Draft) -> CommitRecord:
     return record
 
 
-def _fetch_state(tx: ManagedTransaction, cs: Changeset) -> GraphState:
+def _fetch_state(tx: ManagedTransaction, cs: Changeset, unversioned: frozenset[str]) -> GraphState:
     """取出核对前提所需的局部状态：涉及的节点、涉及的边，以及被删节点的全部关系。"""
     ids = sorted({n.id for n in cs.nodes} | {end for e in cs.edges for end in (e.key.src, e.key.dst)})
     deleted = sorted(n.id for n in cs.nodes if n.op == "delete")
@@ -365,7 +377,7 @@ def _fetch_state(tx: ManagedTransaction, cs: Changeset) -> GraphState:
         )
     # 同一条关系可能同时出现在两次查询中（被删节点上、且列在变更集里的边），按 elementId 去重。
     edges = list({r["rid"]: r for r in listed + incident}.values())
-    return _state_from_rows(nodes, edges)
+    return _state_from_rows(nodes, edges, unversioned)
 
 
 def _write_changes(tx: ManagedTransaction, cs: Changeset) -> None:
@@ -524,18 +536,20 @@ def _dumps(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
-def _state_from_rows(nodes: list[Mapping[str, Any]], edges: list[Mapping[str, Any]]) -> GraphState:
+def _state_from_rows(
+    nodes: list[Mapping[str, Any]], edges: list[Mapping[str, Any]], unversioned: frozenset[str]
+) -> GraphState:
     state = GraphState()
     for row in nodes:
         if row["id"] in state.nodes:
             raise GraphVCError(f"duplicate node id {row['id']!r} in the database")
-        props = {k: v for k, v in row["props"].items() if k != "id"}
+        props = {k: v for k, v in row["props"].items() if k != "id" and k not in unversioned}
         state.nodes[row["id"]] = NodeState(frozenset(row["labels"]), props)
     for row in edges:
         key = EdgeKey(row["src"], row["type"], row["dst"])
         if key in state.edges:
             raise GraphVCError(f"parallel relationships {key} cannot be versioned")
-        state.edges[key] = dict(row["props"])
+        state.edges[key] = {k: v for k, v in row["props"].items() if k not in unversioned}
     return state
 
 
