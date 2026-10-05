@@ -25,6 +25,7 @@ members = [
     "experiments/e08",
     "experiments/e09",
     "packages/arxiv2md",
+    "packages/apply-patch",
 ]
 exclude = [
     "experiments/p4a",             # 历史项目，vllm/mineru 版本与主线冲突，冻结
@@ -47,7 +48,7 @@ notebook = [
     "plotly>=5.24,<7",
 ]
 test = [
-    # 成员的单元测试（packages/arxiv2md/tests）。按仓库约定，开发者工具
+    # 成员的单元测试（packages/arxiv2md/tests、packages/apply-patch/tests）。按仓库约定，开发者工具
     # 只出现在根的依赖组里，不进入任何成员的 dependencies。
     "pytest>=8,<9",
 ]

@@ -4,6 +4,7 @@ requires-python = ">=3.12, <3.14"
 
 [manifest]
 members = [
+    "apply-patch",
     "arxiv2md",
     "cacheplan",
     "cacheplan-e08",
@@ -40,6 +41,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/ea/9a/c15a60547004a3f3c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/21/a6/2b21ce5ebe4d8938a247c9b0dbb7271566ae559b01795c83ea4bb2660ed7/anyio-4.15.0-py3-none-any.whl", hash = "sha256:7ecd9937369ffce8bba0b5ccb9b3a9507b101b0ed50256aecfbab27e6c2acb99", size = 131908, upload-time = "2026-09-02T21:46:35.485Z" },
 ]
+
+[[package]]
+name = "apply-patch"
+version = "0.1.0"
+source = { editable = "packages/apply-patch" }
 
 [[package]]
 name = "appnope"
