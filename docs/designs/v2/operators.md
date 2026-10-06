@@ -1,6 +1,6 @@
 # 算子契约
 
-> **状态：** 本文是 V2 的现行算子契约，规定全部算子的定义、输入输出、校验与图模式映射。算子分两部分：中间件算子（Search、Resolve、Traverse、ReadEvidence、Commit）负责对知识库的定位、导航、读原文与入库；Agent 算子（Extract、Summarize、Generate、Check、Verify、Filter、Rank、MatrixConstruct）规定 Agent 使用知识时的工作行为，每次调用的结果持久化为第四类节点 Artifact。Agent 算子的名称沿用 AgenticScholar（[S]：Table 2 与 Appendix D），定义按本项目的使用场景与职责边界重新规定。对象与关系见 [Graph Model V2](./graph_model_v2.md)，入库见 `docs/experiments/e09/operators/commit.md`（早先的表单契约见 [Commit 契约](./commit_contract.md)），intent 与数据流见 [Workload 拆解](./intents_decompose.md)。E09 的实现状态见第 9 节。
+> **状态：** 本文是 V2 的现行算子契约，规定全部算子的定义、输入输出、校验与图模式映射。算子分两部分：中间件算子（Search、Resolve、Traverse、ReadEvidence、Commit）负责对知识库的定位、导航、读原文与入库；Agent 算子（Extract、Summarize、Generate、Check、Verify、Filter、MatrixConstruct）规定 Agent 使用知识时的工作行为，每次调用的结果持久化为第四类节点 Artifact。Agent 算子的名称沿用 AgenticScholar（[S]：Table 2 与 Appendix D），定义按本项目的使用场景与职责边界重新规定。对象与关系见 [Graph Model V2](./graph_model_v2.md)，入库见 `docs/experiments/e09/operators/commit.md`（早先的表单契约见 [Commit 契约](./commit_contract.md)），intent 与数据流见 [Workload 拆解](./intents_decompose.md)。E09 的实现状态见第 9 节。
 
 ## 1. 总览
 
@@ -12,13 +12,13 @@
 | 中间件算子 | `Commit` | 中间件，确定性执行 | graph-doc 入库 |
 | Agent 算子：生成 | `Extract`、`Summarize`、`Generate` | Agent 生成内容，中间件校验 | 每次调用写一个 Artifact |
 | Agent 算子：判断 | `Check`、`Verify`、`Filter` | Agent 给出逐项判断，中间件校验 | 同上 |
-| Agent 算子：组织 | `Rank`、`MatrixConstruct` | 中间件对已有 Artifact 记录确定执行 | 同上 |
+| Agent 算子：组织 | `MatrixConstruct` | Agent 填写矩阵，中间件校验表格结构 | 同上 |
 
-Agent 能用的工具就是这 13 个算子。中间件算子回答"库里有什么、原文写了什么"；Agent 算子记录"Agent 用这些做了什么"。
+Agent 能用的工具就是这 12 个算子。中间件算子回答"库里有什么、原文写了什么"；Agent 算子记录"Agent 用这些做了什么"。
 
 ### 1.2 职责边界
 
-- **中间件不调用 LLM。** Agent 算子的内容（抽取值、概述、判断）由 Agent 生成后作为参数交给中间件；中间件只校验结构、引用与出处，并持久化。`Rank` 与 `MatrixConstruct` 只对结构化记录做排序与透视，由中间件执行。这与 AgenticScholar 不同：后者的这些算子是系统内部的一次 LLM 调用。
+- **中间件不调用 LLM。** Agent 算子的内容（抽取值、概述、判断）由 Agent 生成后作为参数交给中间件；中间件只校验结构、引用与出处，并持久化。跨论文的组织（`MatrixConstruct`）也由 Agent 填写：记录在 Artifact 文档中而不在图里，中间件不对其排序、分组或透视，只校验声明的表格结构。这与 AgenticScholar 不同：后者的这些算子是系统内部的一次 LLM 调用。
 - **所有写入经同一版本底层。** 每次写入先校验，再经 graph-vc 在一个事务中写入并产生一个提交记录（版本历史），提交后补算向量。`Commit` 是提交 graph-doc 的算子；Agent 算子不是 `Commit`，但它们写 Artifact 时使用同一底层（第 5.5 节）。校验不通过时不写入，返回错误。
 - **引用参数只接收已确认的 id。** 名称先经 `Resolve`，语义候选经 Agent 确认（通常用 `Filter`）后才能作为引用参数。
 - **关系存在不是证据强度。** 路径、参与关系与 `USED` 只说明记录了这些关联；`SUPPORTED_BY`、`SUPPORTS` / `OPPOSES` 记录的是作者或 Agent 的陈述，不经验证。
@@ -36,7 +36,7 @@ Agent 算子要求声明输入、逐项给出判断与依据、在正文中标�
 | --- | --- | --- |
 | 对象引用 | `<kind 前缀>_<序号>`，如 `method_0027`、`exp_0012`、`art_0003` | 一个节点；由入库分配，当前不修订、不合并 |
 | 来源引用 `source_ref` | `<material_id>::<章节>::<start>:<end>` | 一份固定材料（论文原文或 Artifact 文档）中的行范围；由 `FROM {material_ref, locators}` 或 `USED {material_ref, locators}` 逐个定位拼出 |
-| 记录引用 | `<artifact id>#<key>` | Artifact 中的一条记录（如 `Extract` 的一行、`Filter` 的一项），`key` 为该记录的键 |
+| 记录引用 | `<artifact id>#<key>` | Artifact 中的一条记录（如 `Extract` 的一行、`Filter` 的一项、`MatrixConstruct` 的一格），`key` 为该记录的键 |
 
 正文中的引用处直接写引用本身，放在方括号里，例如 `[exp_0012]`、`[art_0003#dlinear-etth1-96]`、`[material_1ec346c934e6::5.3 ...::245:290]`。Agent 算子的文本、产物文档与最终回答都用这一写法，不另设脚注编号。
 
@@ -228,10 +228,10 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 | 字段 | 说明 |
 | --- | --- |
 | `title` | 产物标题；省略时由中间件按 `op` 与参数生成 |
-| `abs` | 几句话说明这个产物是什么、回答了什么，作为检索文本；`Rank`、`MatrixConstruct` 可省略，由参数自动生成 |
+| `abs` | 几句话说明这个产物是什么、回答了什么，作为检索文本 |
 | `inputs` | 用到的对象引用、来源引用、Artifact 或记录引用；每项写成一条 `USED` 边（第 5.2 节） |
-| `params` | 各算子的声明参数，如抽取的 schema、检查维度、排序字段 |
-| `payload` | Agent 生成的内容：记录、文本或逐项判断；`Rank`、`MatrixConstruct` 没有 |
+| `params` | 各算子的声明参数，如抽取的 schema、检查维度、矩阵的行与列 |
+| `payload` | Agent 生成的内容：记录、文本、逐项判断或矩阵的格子 |
 | `session`、`formed_by` | 会话标识与形成者 |
 
 `inputs` 必填。列入哪些输入、是否先读原文，由 Agent 的使用指南约定（实际用到的才列入，数值与判断应来自读过的原文或记录）；中间件不追踪 Agent 读过什么。
@@ -244,11 +244,11 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 
 **返回：** `status` 为 `created`，或相同调用的重试返回 `existing`（第 5.4 节，此时 `commit` 为空）；`artifact` 为 Artifact 的 id；`commit` 为本次写入的提交 id；`document` 为产物文档的路径与 `material_ref`；`stats` 为该算子的统计（目前只有 `Generate`）；`render` 是文档正文（不含头部），可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示：`unused-input`（某个输入没有在 `params` 与 `payload` 中被引用）、`embedding`（提交后补算向量失败，提交保留）。
 
-**错误**的形状与 `Commit` 的阻塞项相同：`{rule, where, msg}`，`rule` 为 `format`（请求的形状）、`schema`（算子参数与内容）、`reference`（引用不在库中或不属于 `inputs`）、`judgment`（判断的取值、依据与覆盖）、`citation`（`Summarize` 的段落缺少引用）或 `conflict`（提交时与并发写入冲突）。命令行入口为 `python -m e09.use`（第 9 节）。
+**错误**的形状与 `Commit` 的阻塞项相同：`{rule, where, msg}`，`rule` 为 `format`（请求的形状）、`schema`（算子参数与内容）、`reference`（引用不在库中或不属于 `inputs`）、`judgment`（判断的取值、依据与覆盖）、`citation`（`Summarize` 的段落缺少引用）或 `conflict`（提交时与并发写入冲突）。命令行入口为 `python -m e09`（第 9 节）。
 
 **判断的取值：** `T` 表示在声明的条件与依据下成立；`F` 表示有依据判断不成立；`U` 表示依据不足、相互冲突或条件含义不明。`T` 与 `F` 必须给出 `basis`（属于 `inputs` 的引用），`U` 必须给出 `reason`。执行中断与格式错误是 `errors`，不能写成 `U`。
 
-**文档正文：** 每个产物的文档都是"头部 + 正文"（第 5.3 节），正文结构按算子规定，见各节的"正文"一项。需要被其他算子读取的产物（`Extract`、`Check`、`Filter`）在正文末尾附一个 `yaml` 数据块，其余产物只有可读正文。
+**文档正文：** 每个产物的文档都是"头部 + 正文"（第 5.3 节），正文结构按算子规定，见各节的"正文"一项。需要被其他算子读取的产物（`Extract`、`Check`、`Filter`、`MatrixConstruct`）在正文末尾附一个 `yaml` 数据块，其余产物只有可读正文。
 
 ### 4.2 Extract
 
@@ -331,38 +331,24 @@ Filter(inputs, params: {items: {key: 引用}, condition: {id, text}},
 
 - **校验：** 每个 `key` 恰有一条判断。
 - **正文：** 条件一行；按 `T` / `F` / `U` 分三节，每项一行（键、引用、依据或原因）；数据块 `{items, condition, judgments}`。`U` 不得当作 `F` 丢弃，必须保留。每项可用 `<artifact>#<key>` 引用。
-- 其他算子可用 `keep: <Filter 产物>` 只取 `T` 项（第 4.8、4.9 节）。
+- 后续只用 `T` 项时，在后续算子的 `inputs` 中引用这些项（`<artifact>#<key>`）。
 
-### 4.8 Rank
+### 4.8 MatrixConstruct
 
-**用途：** 按可度量的字段给记录排序，例如同一数据集、同一指标下各方法的结果。由中间件执行。
-
-```text
-Rank(inputs: Extract 产物, params: {by: [{field, order: asc | desc}], group_by?, where?, keep?, top_k?})
-```
-
-> 尚未实现：调用返回 `format` 错误 `not implemented yet`（第 9 节）。
-
-- **语义：** 先按 `where`（字段相等条件）与 `keep`（Filter 产物中的 `T` 项）筛选，再按 `group_by` 分组，组内按 `by` 排序；并列取相同名次。缺少 `by` 字段的记录列入 `unranked`。
-- **可比性由调用方保证。** `group_by` 应包括决定可比性的字段（如数据集、预测长度、指标）；是否真的可比由 `Check` 判断后经 `Filter` 或 `keep` 传入。Rank 本身不判断可比性。
-- **正文：** 每组一张排名表（名次、记录引用、排序字段的值）；`unranked` 列表。
-- **不做的事：** 不排语义准则（"哪个方法更有前景"）。这类排序先用 `Check` 或 `Filter` 做判断，再用 `Generate` 说明。
-
-### 4.9 MatrixConstruct
-
-**用途：** 把记录透视成表或矩阵，例如方法 × 数据集的结果表、Issue × Method 的研究空白矩阵、按方法计数的论文分布。由中间件执行。
+**用途：** 把跨论文的比较组织成一张矩阵，例如方法 × 数据集的结果表、Issue × Method 的研究空白矩阵、方法 × 设计要素的路线对比。矩阵由 Agent 填写，中间件只校验表格结构。
 
 ```text
-MatrixConstruct(inputs: Extract 产物（可多个，字段同名）,
-                params: {rows: field, columns: field, value: field | count, aggregate?: none | count | min | max | mean,
-                         where?, keep?})
+MatrixConstruct(inputs,
+                params: {rows: {key: 引用 | {text}}, columns: {key: 引用 | {text}},
+                         cell: {type, question?}},
+                payload: {cells: [{row, col, value, basis?, note?}], note?})
 ```
 
-> 尚未实现，同 `Rank`。
-
-- **语义：** 筛选同 `Rank`；以 `rows`、`columns` 字段的取值为行列，单元格放 `value` 字段的值。`aggregate=none` 时同一格有多个值就全部列出，不隐式合并；`count` 用于分组计数，覆盖 GroupBy 与 Aggregate 的用途。
-- **空单元格**写"—"，表示输入的记录中没有，不表示原文或世界上不存在。
-- **正文：** 一张矩阵表，每格写值与产生它的记录引用。
+- **行与列：** 每个键对应一个引用（对象、记录或来源引用），或一段写明的标签 `{text}`。行、列中的引用写成 `USED` 边，`role` 记录键。
+- **格子：** `type` 与 `Extract` 的字段类型相同（第 4.2 节），`T` / `F` / `U` 写作 `enum[T, F, U]`。`value` 可为 `null`，表示空格子。`basis` 与 `note` 可选，不由中间件强制；是否给出依据、空格子写明"未报告""不适用"还是"未查"，由使用指南引导（第 6 节）。
+- **校验：** `rows`、`columns` 非空，键的写法与 `Check`、`Filter` 的项键相同；每个"行 × 列"恰有一个格子，不缺、不重复，不出现未声明的行或列；非空的 `value` 符合 `cell.type`；出现的引用（行、列、`ref` 类型的值、`basis`）都属于 `inputs`。不合格时按 `schema` 或 `reference` 报错。
+- **不做的事：** 不核对格子的值是否等于所引用记录中的值，不判断同一列的值是否可比（可比性先经 `Check` 判断），不排序、不汇总。排名与结论在 `Generate` 中说明。
+- **正文：** 一张矩阵表（行、列按声明的顺序，空格子写"—"，有 `basis` 的格子在值后附引用）；其下列出各格的 `note`；数据块 `{rows, columns, cell, cells}`，`cells` 按行优先、声明的顺序排列。每个格子可用 `<artifact>#<row>~<col>` 引用。
 
 ## 5. Artifact
 
@@ -404,8 +390,8 @@ title: <自动生成或 Agent 撰写>
 nodes_used: [<inputs 中的引用>]
 abs: <Agent 撰写或自动生成>
 ---
-<正文：结构按算子规定（第 4.2–4.9 节）>
-<数据块（Extract、Check、Filter）：正文末尾的 ```yaml 代码块>
+<正文：结构按算子规定（第 4.2–4.8 节）>
+<数据块（Extract、Check、Filter、MatrixConstruct）：正文末尾的 ```yaml 代码块>
 ```
 
 - `nodes_used` 按 `inputs` 的顺序，来源引用统一写成材料 id 的形式，与 `ReadEvidence` 的写法相同。它是不可变的输入记录，读取时据此计算过期（第 5.6 节）。
@@ -450,7 +436,7 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 ## 6. 使用约定
 
 - **按需使用。** 回答中含数值、比较或判断时使用 Agent 算子；简单的定位与阅读问题直接用中间件算子回答。
-- **使用指南。** `inputs` 怎么填、何时先读原文、引用怎么写，由 Agent 配置中的使用指南简单约定（第 4.1 节），不由中间件强制。
+- **使用指南。** `inputs` 怎么填、何时先读原文、引用怎么写，由 Agent 配置中的使用指南简单约定（第 4.1 节），不由中间件强制。跨论文的比较与对照用 `MatrixConstruct` 整理成矩阵；格子尽量给出 `basis`，空格子在 `note` 中写明是未报告、不适用还是未查。
 - **回答引用产物。** 最终回答中的数值、比较与判断应来自 Artifact，可直接粘贴其 `render`；每个数字都能经方括号中的引用追到记录与原文行。
 - **结果默认折叠。** 在 Agent 应用中，Agent 算子的调用以一行摘要呈现（如"抽取 12 行结果""核对可比性：3 对可比、1 对不确定"），用户展开时再看产物。用户读的始终是对话中的回答。
 - **判断与确认用 Filter。** `Resolve` 的候选确认、入库前的查重判断都以 `Filter`（条件为同一对象）记录，其成本计入构建成本。
@@ -463,7 +449,7 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 | --- | --- |
 | I1 发现适合需求的方法 | `Search(Concept, kinds={Method})` → `Traverse` 取讨论它们的主张与实验 → `ReadEvidence` → `Filter`（是否适用）→ `Generate`（回答） |
 | I2 理解机制与细节 | `Resolve` → `Traverse([m])` 及其 `ABOUT` 入边的 Content → `ReadEvidence` → `Extract`（设置细节）或 `Summarize`（机制要点） |
-| I3 组织结果并判断可比性 | `Resolve` → `Search(Content, kinds={Experiment}, where={evaluates, uses})` → `ReadEvidence`（按锚点读表）→ `Extract`（结果行）→ `Check`（切分、长度、口径）→ `MatrixConstruct` 或 `Rank`（`keep` 可比项）→ `Generate` |
+| I3 组织结果并判断可比性 | `Resolve` → `Search(Content, kinds={Experiment}, where={evaluates, uses})` → `ReadEvidence`（按锚点读表）→ `Extract`（结果行）→ `Check`（切分、长度、口径）→ `MatrixConstruct`（方法 × 数据集，可比的结果）→ `Generate` |
 | I4 综合同一问题下的路线 | `Search(Concept, kinds={Issue})` → `Traverse` 取 `ABOUT` 它的主张与贡献 → `ReadEvidence` → `Extract`（路线要素）→ `MatrixConstruct`（Issue × Method）→ `Summarize` |
 | I5 核查主张的依据 | `Search(Content, kinds={Claim})` → `Traverse`（`SUPPORTED_BY`、`SUPPORTS` / `OPPOSES`）→ `ReadEvidence` → `Verify` → 需要留存时经 `Commit` 写 Observation |
 | I6 取得实现资源 | `Resolve` → `Traverse`（`IMPLEMENTS` 入边，当前无数据）或 `Search(Entity, kinds={Code, Model}, query)` → `ReadEvidence` → `Filter`（是否就是该实现）→ `Extract`（地址与设置） |
@@ -474,26 +460,33 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 | --- | --- |
 | 预设语义的读取算子（Experiments、Evidence、Context、Implementations、Get） | 由 `Search` 的结构条件、`Traverse` 的路径与对象视图覆盖，不单列 |
 | 关系检索 | 关系的 `description` 已建向量，但没有 workload 需要按关系检索；`Traverse` 返回边上的说明 |
-| AgenticScholar 的 GroupBy、Aggregate、语义 Filter 以外的关系式算子 | 分组与计数由 `MatrixConstruct` 覆盖；确定性的字段筛选是 `Rank`、`MatrixConstruct` 的 `where` |
+| AgenticScholar 的 Rank、GroupBy、Aggregate 等对记录做计算的算子 | 记录在 Artifact 文档中而不在图里，中间件不对其排序、分组或计数。跨论文的组织由 Agent 经 `MatrixConstruct` 填写；排名与结论写在 `Generate` 中，可比性先经 `Check` 判断 |
 | Artifact 的清理与归并 | 当前只追加；按价值信号清理留待有真实使用数据后再定 |
 | Concept 精炼与整理 | 日后增加专门的工具或算子，整理 Claim 与 Issue、Proposition 并建立正反关系 |
 
 ## 9. E09 实现对照
 
-模块都在 `experiments/e09/src/e09/` 下；依赖方向为 `use → read → utils`，`read` 另用 `write` 的视图部件。
+模块都在 `experiments/e09/src/e09/` 下。每个算子一个文件，定义一个 `Operator`（`operators/base.py`），字段对应 pi 的
+`ToolDefinition`（名称、说明、参数的 JSON Schema、使用指南与执行），按名称登记在 `operators.OPERATORS` 中。全部算子
+经同一个命令行入口 `python -m e09` 调用，请求的 `op` 为算子名；直接给 graph-doc 时视为 `Commit`。共用的支持放在与
+`operators/` 同级的包中，依赖方向为 `operators → commit、artifact、query → store、model`。
 
 | 算子 | 模块 | 状态 |
 | --- | --- | --- |
-| `Commit` | `write/`，入口 `python -m e09.write` | 已实现：graph-doc → graph-plan / graph-result，经 graph-vc 提交 |
-| `Resolve` | `operators/resolve.py` | 已实现；目前只作为 `Commit` 查重的底层，没有对外入口 |
-| `Search` | `read/search.py`、`read/conditions.py` | 已实现，含 `type=Artifact` |
-| `Traverse` | `read/traverse.py` | 已实现，含 `USED` |
-| `ReadEvidence` | `read/read_evidence.py` | 已实现，可读 Artifact 文档 |
-| 读视图 | `read/view.py`；Artifact 的文档与过期在 `read/artifacts.py` | 已实现；`Search`、`Traverse`、`ReadEvidence` 的命令行入口为 `python -m e09.read` |
-| `Extract`、`Summarize`、`Generate`、`Check`、`Verify`、`Filter` | `use/operators.py`（各算子的 schema 与正文）、`use/write.py`（共同写入路径），入口 `python -m e09.use` | 已实现 |
-| `Rank`、`MatrixConstruct` | — | 待实现 |
-| 引用写法、Artifact 文档格式 | `utils/refs.py`、`utils/artifact_doc.py` | 读写两侧共用 |
+| `Search` | `operators/db/search.py` | 已实现，含 `type=Artifact` |
+| `Resolve` | `operators/db/resolve.py`，三级解析在 `query/resolve.py` | 已实现；`Commit` 的查重也用它 |
+| `Traverse` | `operators/db/traverse.py` | 已实现，含 `USED` |
+| `ReadEvidence` | `operators/db/read_evidence.py` | 已实现，可读 Artifact 文档 |
+| `Commit` | `operators/db/commit.py`，写入管线在 `commit/` | 已实现：graph-doc → graph-plan / graph-result，经 graph-vc 提交 |
+| `Extract`、`Summarize`、`Generate`、`Check`、`Verify`、`Filter`、`MatrixConstruct` | `operators/agent/<算子>.py`（各算子的校验、正文与数据块），共用部件在 `operators/agent/_common.py` | 已实现 |
 
-测试在 `experiments/e09/tests/read/` 与 `tests/use/`，只在空的测试实例（`GRAPH_VC_TEST_NEO4J_URI`）上运行。neo4j-e09 中还没有 Artifact；Artifact 的约束与全文、向量索引在下一次写入时建立。
+| 支持 | 模块 |
+| --- | --- |
+| 结构条件、RRF 融合、读视图与只读字段、固定材料 | `query/conditions.py`、`query/fusion.py`、`query/view.py`、`query/materials.py` |
+| Artifact 的文档格式、共同写入路径、可能过期 | `artifact/document.py`、`artifact/write.py`、`artifact/stale.py` |
+| 数据模型、引用写法、名称精确键 | `model/schema.py`、`model/refs.py`、`model/namekey.py` |
+| 算子环境、库的版本记录与约束索引、连接、向量 | `store/store.py`、`store/database.py`、`store/graph.py`、`store/embedding.py` |
+
+测试在 `experiments/e09/tests/operators/db/` 与 `tests/operators/agent/`，只在空的测试实例（`GRAPH_VC_TEST_NEO4J_URI`）上运行；写入管线的测试在 `tests/commit/`。neo4j-e09 中还没有 Artifact；Artifact 的约束与全文、向量索引在下一次写入时建立。
 
 **参考：** [S] Hai Lan et al. *AgenticScholar: Agentic Data Management with Pipeline Orchestration for Scholarly Corpora.* PACMMOD 4(2), Article 131, 2026（本地精读见 `references/papers/2026-AgenticScholar-reread/`）。

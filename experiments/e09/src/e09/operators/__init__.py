@@ -1,6 +1,28 @@
-"""中间件算子：一个算子一个文件，文件名即设计中的算子名（docs/designs/v2/operators.md）。
+"""E09 的算子（docs/designs/v2/operators.md）：``db/`` 由中间件执行，``agent/`` 由 Agent 给内容、中间件校验后写成
+Artifact。每个算子是一个 :class:`Operator`（见 :mod:`e09.operators.base`），按名称登记在 ``OPERATORS`` 中。
 
-已实现：resolve（Entity 与 Concept 的解析；写入路径的查重也经它的写入模式）。
-Commit 的实现在 e09.write（graph-doc，见 docs/experiments/e09/operators/commit.md）。
-旧模型上的 get、experiments、read_evidence 及 I3 的运行入口已删除，见 git 历史；读取算子将按新规范重写。
+    call(ctx, {op, ...}) -> Result
 """
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from .agent import AGENT_OPERATORS
+from .base import Context, Operator, Result
+from .db import DB_OPERATORS
+
+OPERATORS: dict[str, Operator] = {**DB_OPERATORS, **AGENT_OPERATORS}
+
+
+def call(ctx: Context, request: Mapping[str, Any]) -> Result:
+    """按请求的 ``op`` 找到算子并执行；请求不是映射或 ``op`` 不认识时返回契约错误。"""
+    op = request.get("op") if isinstance(request, Mapping) else None
+    if op not in OPERATORS:
+        problems = [{"at": "op", "msg": f"one of {list(OPERATORS)}"}]
+        return Result({"error": "contract", "problems": problems}, is_error=True)
+    return OPERATORS[op].call(ctx, request)
+
+
+__all__ = ["OPERATORS", "Context", "Operator", "Result", "call"]

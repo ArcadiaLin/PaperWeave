@@ -4,8 +4,8 @@
 >
 > **实现情况（2026-10-05）：**
 >
-> - 第 2–7 节的格式、写入语义、检查与 dry_run / apply 已实现：解析与求差在 `packages/graph-doc`，按冻结模型的翻译、查重与写后复核在 `experiments/e09/src/e09/write/`。
-> - 命令行入口是 `python -m e09.write`，它会拒绝没有版本记录的旧库，提交后补算向量。
+> - 第 2–7 节的格式、写入语义、检查与 dry_run / apply 已实现：解析与求差在 `packages/graph-doc`，按冻结模型的翻译、查重与写后复核在 `experiments/e09/src/e09/commit/`。
+> - 命令行入口是 `python -m e09`（直接给 graph-doc 即为 Commit，算子定义在 `operators/db/commit.py`，写入管线在 `commit/`），它会拒绝没有版本记录的旧库，提交后补算向量。
 > - 第 8.2–8.3 节的 Commit 记录与 `Revert` 由 `packages/graph-vc` 实现。
 > - 尚未实现：
 >   - 读视图渲染（§6 R）；

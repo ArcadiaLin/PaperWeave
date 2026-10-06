@@ -14,10 +14,10 @@ neo4j-e09（`infra/neo4j-e09/`）的全部内容由本目录的 graph-doc 按文
 ## 重建
 
     D=data/raw/e09-paper-knowledge/docs
-    uv run python -m e09.write $D/01-seed-tsf.yml --source seed:tsf --no-dedup --apply
-    uv run python -m e09.write $D/02-seed-rag.yml --source seed:rag --no-dedup --apply
-    uv run python -m e09.write $D/03-2023-DLinear.yml --source paper:2023-DLinear --apply
-    uv run python -m e09.write $D/04-2023-PatchTST.yml --source paper:2023-PatchTST --apply
+    uv run python -m e09 $D/01-seed-tsf.yml --source seed:tsf --no-dedup --apply
+    uv run python -m e09 $D/02-seed-rag.yml --source seed:rag --no-dedup --apply
+    uv run python -m e09 $D/03-2023-DLinear.yml --source paper:2023-DLinear --apply
+    uv run python -m e09 $D/04-2023-PatchTST.yml --source paper:2023-PatchTST --apply
 
 种子是经整理的可信批量入库，不查重；论文文件开头的 `confirm` 记录了对查重候选的判断（都判为不同对象）。
 每次提交记录的输入与对应文件逐字相同，文件改动后不能再用来重放已有的提交。

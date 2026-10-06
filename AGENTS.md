@@ -49,8 +49,10 @@ research conclusions. Retrieving a stored judgment is distinct from producing
 one. Agent operator contracts describe the inputs and outputs of extraction,
 judgment, and synthesis: external agents supply semantic content, and the
 middleware validates declared structure and references and persists artifacts.
-Deterministic organization, such as sorting and pivoting existing records, can
-be executed by the middleware. The placement of embedding computation remains
+Organizing records across papers, such as comparison matrices, is also an agent
+contract: record contents reside in artifact documents rather than the graph,
+so the middleware does not compute over them; it validates only the declared
+table structure and references. The placement of embedding computation remains
 an open implementation boundary.
 
 Use database provenance and persistent derived data to explain this design.

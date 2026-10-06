@@ -30,16 +30,24 @@ packages = ["src/e09"]
 line-length = 120
 target-version = "py312"
 include = [
-    "src/e09/write/**/*.py",
-    "src/e09/read/**/*.py",
-    "src/e09/use/**/*.py",
-    "src/e09/utils/schema.py",
-    "src/e09/utils/refs.py",
-    "src/e09/utils/artifact_doc.py",
-    "src/e09/utils/yamlfmt.py",
-    "tests/write/**/*.py",
-    "tests/read/**/*.py",
-    "tests/use/**/*.py",
+    "src/e09/__init__.py",
+    "src/e09/__main__.py",
+    "src/e09/cli.py",
+    "src/e09/yamlfmt.py",
+    "src/e09/operators/**/*.py",
+    "src/e09/commit/**/*.py",
+    "src/e09/artifact/**/*.py",
+    "src/e09/model/__init__.py",
+    "src/e09/model/schema.py",
+    "src/e09/model/refs.py",
+    "src/e09/store/__init__.py",
+    "src/e09/store/store.py",
+    "src/e09/store/database.py",
+    "src/e09/query/__init__.py",
+    "src/e09/query/conditions.py",
+    "src/e09/query/materials.py",
+    "src/e09/query/view.py",
+    "tests/**/*.py",
 ]
 
 [tool.ruff.lint]

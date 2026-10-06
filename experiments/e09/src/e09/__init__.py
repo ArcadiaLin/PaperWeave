@@ -1,5 +1,8 @@
-"""E09：按 v2 数据模型（docs/designs/v2/graph_model_v2.md）入库真实论文，检验访问算子。
+"""E09：按 v2 数据模型（docs/designs/v2/graph_model_v2.md）入库真实论文，检验算子。
 
-读取侧有环境自检（env_check）与 operators/ 下的读取算子；写入路径改用 packages/graph-vc 与 packages/graph-doc 重写，
-旧写入路径见 tag e09-legacy-write。
+- ``operators/``：算子，``db/`` 由中间件执行，``agent/`` 由 Agent 给内容、中间件校验后写成 Artifact；
+- ``model/``：数据模型与引用的写法；``store/``：连接、库的版本记录与约束索引、向量；
+- ``query/``：读取共用的条件、融合、读视图与材料；``commit/``：graph-doc 的写入管线；
+- ``artifact/``：Artifact 的文档、写入与过期；
+- ``cli.py``：命令行入口 ``python -m e09``。
 """
