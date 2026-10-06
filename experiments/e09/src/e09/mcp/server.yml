@@ -7,180 +7,242 @@
 #
 # 参数路径用 . 连接属性名，[] 表示数组的元素，例如 payload.judgments[].basis。每个顶层参数都必须有说明；
 # 写了不存在的工具或路径时服务不启动。shared 只放 YAML 锚点，供各工具引用。
+#
+# pi 以 direct 方式列出工具时，模型看不到 instructions（只有 codemode 的 describeNamespace() 返回它），
+# 所以用法全部写在各工具的说明里；引用写法、kind 与 inputs 规则在用到的工具中重复给出。
 
 server:
   name: PaperWeave
-  version: 0.1.0
+  version: 0.2.0
 
 instructions: |
-  PaperWeave is a knowledge store built from CS papers.
-  It holds papers, the methods, datasets, tasks and experiments they describe, and artifacts that earlier sessions produced while using that knowledge. Search, Resolve, Traverse and ReadEvidence find objects, follow relations and read the source lines behind them. Extract, Summarize, Generate, Check, Verify, Filter and MatrixConstruct record your work: you supply the content and judgments, the store checks the declared structure and references and keeps each call as an artifact that later sessions can find and reuse. Commit, when listed, changes the stored knowledge itself.
+  PaperWeave is a knowledge store built from CS papers, with the artifacts earlier sessions produced while using it.
+  Find with Search and Resolve, follow relations with Traverse, read source lines with ReadEvidence. Record your work with Extract, Summarize, Generate, Check, Verify, Filter or MatrixConstruct; each call is kept as an artifact that later sessions can find and reuse. Commit, when listed, changes the stored knowledge itself. Each tool's description says how to use it.
 
 shared:
   artifact: &artifact
-    title: Optional; generated from op and params when omitted.
-    abs: A few sentences on what this artifact is; used for search.
-    inputs: Object, source, artifact or record references actually used.
-  basis: &basis A reference or a list of references; required for T and F.
-  reason: &reason Required for U.
+    title: A short descriptive title; it also names the artifact's document file. Generated from op and params when omitted.
+    abs: Two or three sentences on what this artifact contains and for which question; later sessions find it by this text.
+    inputs: >-
+      Every reference used in params and payload, as a list: object ids (exp_0004), source references
+      (<material id>::<section>::<start>:<end>, as given by Search or Traverse), artifact ids (art_0003) or record
+      references (<artifact id>#<record key>). A reference counts as listed when it is listed itself, falls within the line range
+      of a listed source reference of the same material, is a record of a listed artifact, or is the paper whose
+      lines a listed source reference points to.
+  basis: &basis A reference or a list of references; required for T and F, and they must be among inputs.
+  reason: &reason Required for U; say whether the evidence is insufficient, conflicting or unclear.
 
 tools:
   Search:
     title: Search
-    description: >-
-      Find objects of one type (Entity, Concept, Content or Artifact) by query and structural conditions.
-      Returns a ranked list of results: id, kind, name or title, and the opening part of the searched text
-      (description, definition, text and note, or abs); Content results also give their paper and source_refs.
-      Results carry no relations. To see an object's full fields and relations, call Traverse with start
-      [id] and an empty path; to read the source lines, pass source_refs to ReadEvidence.
-      The whole result is kept under 16 KB: the space is shared evenly between results, and a text cut short
-      ends with … followed by <field>_bytes, its full length. Fewer results per page give longer excerpts.
-      Artifacts appear only with type=Artifact.
+    description: |-
+      Find stored objects of one type by text and structural conditions. Types and their kinds:
+      - Entity: Paper, Dataset, Code, Model, Benchmark, Tool
+      - Concept: Method, Task, Issue, Proposition
+      - Content (records taken from papers): Claim, Experiment, Contribution, Observation
+      - Artifact: work products of earlier sessions; no kinds, filter with where.op
+
+      Results are ranked and carry no relations: id, kind, name or title, and the opening part of the searched text (description, definition, text and note, or abs); Content results also give their paper and source_refs, Artifact results their document path. To see an object's full fields and relations, call Traverse with start [id] and an empty path; to read the source lines, pass source_refs to ReadEvidence; an artifact's document is a Markdown file you can read directly.
+
+      The whole result is kept under 16 KB: the space is shared evenly between results, and a text cut short ends with … followed by <field>_bytes, its full length. Fewer results per page give longer excerpts.
+
+      To use a name from the question (a method, dataset or task) in where, first turn it into an id with Resolve.
     parameters:
       type: One type per call.
-      query: "{text?, mention?, identifier?}: text is matched by full text and vectors, mention by name, identifier exactly. Omit to enumerate by where."
-      kinds: List of kinds, such as [Experiment, Claim]; not for Artifact
-      where: "Structural conditions; for Artifact: op, used, formed_by, session"
-      expand: "Widen reference conditions in where: {narrower: depth} for Concept, {parts: depth} for Entity; depth 1-3."
-      scope: List of paper ids; restricts Content to records from these papers. Omit to search the whole store.
-      budget: Maximum number of results in this page (default 10).
-      continuation: meta.continuation of the previous page; keep the other parameters unchanged.
+      query: "{text?, mention?, identifier?}: text is matched by full text and vectors; mention matches names (Entity, Concept); identifier is exact (arxiv:2205.13504, doi:..., url:...; Entity only). Omit to list everything that meets where, in id order."
+      kinds: List of kinds of this type, such as [Experiment]; omit for all kinds. Not for Artifact.
+      where: >-
+        Structural conditions, all of which must hold; a list of ids in one condition means any of them.
+        Values are ids. Entity: part_of, for_task (Dataset, Benchmark), stub. Concept: broader, stub.
+        Content: about, from (paper id), formed_by; Contribution: stated_by (paper | agent); Claim: supported_by;
+        Experiment: evaluates (with role: target | baseline), uses (evaluation data), on_task, evaluated_on.
+        Artifact: op (Extract, Summarize, Generate, Check, Verify, Filter, MatrixConstruct), used (an object id),
+        formed_by, session.
+      expand: "Widen id conditions in where: {narrower: depth} also accepts narrower Concepts, {parts: depth} also accepts parts of an Entity; depth 1-3."
+      scope: List of paper ids; only Content from these papers. Omit to search the whole store.
+      budget: Number of results in this page, 1-100 (default 10).
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.
 
   Resolve:
     title: Resolve
     description: >-
-      Resolve a mention, identifier or text to stored Entity or Concept references of one kind: exact identifier,
-      exact name key, then semantic candidates. Semantic candidates are not identities; confirm them with Filter.
+      Turn a name, identifier or description into the id of a stored Entity or Concept of one kind, before using
+      it in Search where, Traverse start or Commit. Matching runs in order: exact identifier, exact name (including
+      aliases), then semantic candidates. status: resolved (refs is the match), ambiguous (several exact matches),
+      candidates (only similar objects, refs in rank order; not an identity: read them with Traverse, empty path,
+      before using one, and record the decision with Filter when it matters), none, or unprocessed (a matching
+      channel failed; not the same as none). None does not prove the object is absent from the papers.
     parameters:
-      query: "{mention?, identifier?, text?}: the name as written, an identifier, or a description."
-      kind: The kind to resolve to, such as Method, Dataset or Task.
-      scope: global (default).
-      mode: read (default) stops at an exact match; write also lists semantic near-duplicates.
+      query: "{mention?, identifier?, text?}: mention is the name as written; identifier like arxiv:2205.13504; text a description."
+      kind: One kind, such as Method, Dataset, Task or Paper.
+      scope: global (the only scope for now).
+      mode: read (default) stops at an exact match; write also lists semantic near-duplicates, as Commit's duplicate check does.
 
   Traverse:
     title: Traverse
-    description: >-
-      From confirmed references, follow declared relations hop by hop and keep the paths.
-      Each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}; at most 3 hops.
-      USED in-edges lead to the artifacts that used an object.
+    description: |-
+      Read objects with their full fields and relations, or follow relations from known ids. An empty path returns the start objects themselves, each with all its outgoing relations (edge properties such as role, description and source locators included). A non-empty path walks hop by hop and returns the paths (meta.bindings), the end objects (meta.items) and every object on the paths.
+
+      Relations, written from the start node (out) to the end node:
+      - FROM: Content -> its Paper (with locators); ABOUT: Content -> what it is about
+      - EVALUATES: Experiment -> Method/Model/Code/Tool (role target | baseline); USES: Experiment -> Dataset etc. (role); ON_TASK: Experiment -> Task; EVALUATED_ON: Experiment -> Benchmark
+      - SUPPORTED_BY: Claim -> Experiment/Observation; SUPPORTS, OPPOSES: Claim -> Claim
+      - CITES: Paper -> Paper; PART_OF, DERIVED_FROM: Entity -> Entity; IMPLEMENTS: Code/Model -> Method; FOR_TASK: Dataset/Benchmark -> Task
+      - BROADER, HAS_PART, OVERLAPS_WITH: between Concepts; ADDRESSES: Method -> Task
+      - USED: Artifact -> what it used; walk USED with dir in from an object to find the artifacts that used it.
+      Example: the experiments that evaluate a method: start [<method id>], path [{rel: EVALUATES, dir: in}].
+
+      Objects come back whole, so results grow fast: keep budget small (3-5) when the paths end at experiments or claims, and page with continuation.
     parameters:
-      start: List of ids to start from.
-      path: "0-3 hops; each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}. An empty path reads the start objects."
-      budget: Maximum number of paths in this page (default 50).
-      continuation: meta.continuation of the previous page; keep the other parameters unchanged.
+      start: List of ids to start from (from Search, Resolve or an earlier Traverse).
+      path: "0-3 hops; each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}. kinds and where (as in Search) restrict the hop's end objects, edge restricts edge properties such as {role: target}, depth 1-3 repeats BROADER, PART_OF, HAS_PART or DERIVED_FROM. An empty path reads the start objects."
+      budget: Number of paths in this page (default 50).
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.
 
   ReadEvidence:
     title: Read evidence
     description: >-
-      Read the lines a source reference points to (<material>::<section>::<start>:<end>), from paper materials
-      or artifact documents. Each item is available, missing or error; available text carries line numbers.
+      Read the source lines behind a record: pass the source_refs given by Search or Traverse, written
+      <material id>::<section>::<start>:<end> (the start may also be the paper or artifact id). Works for paper
+      materials and artifact documents. Each item is available (text with line numbers), missing or error.
+      Read only the lines you need; cite the same references (or narrower line ranges within them) in your artifacts.
     parameters:
-      source_refs: List of source references.
+      source_refs: List of source references, copied as given.
 
   Commit:
     title: Commit
-    description: >-
-      Submit a graph-doc: create, change or delete knowledge objects and their relations. Without apply it is a
-      dry run returning a graph-plan with blocking errors, warnings and duplicate candidates; with apply it
-      commits through graph-vc and returns a graph-result. Artifacts cannot be written this way.
+    description: |-
+      Change the stored knowledge: create, edit or delete objects and their relations by submitting a graph-doc, a YAML text describing the wanted state of some nodes. Artifacts cannot be written here; use the artifact tools.
+
+      Skeleton:
+        graph-doc: v0.1
+        by: <your model name>
+        confirm: {$ref: {distinct_from: [ids]}}   # optional, see duplicates below
+        nodes:
+          $new-name: {kind: ..., <fields>, <RELATIONS>}   # $ names a new node; the reply maps it to an id
+          exp_0004: {note: ..., ABOUT: [...]}             # an existing id edits that node
+          obs_0002: null                                  # null deletes the node and all its edges
+
+      Field spelling decides meaning: lowercase keys are properties; UPPERCASE keys are outgoing relations; keys starting with _ are read-only (copy them back unchanged or leave them out). A property you omit stays as it is, null clears it. A relation key lists the complete set of that relation type: edges you leave out of the list are deleted, so to add one edge, read the node with Traverse (empty path) and send back the whole list plus the new edge; omitting the key leaves the relation untouched. A list item is an id or $ref, or {to: ref, <edge properties>}. Refer to existing objects only by id (use Resolve for names), never invent ids.
+
+      Kinds and fields (* required unless stub: true):
+      - Paper: name*, description*, identifiers [arxiv:..., doi:..., url:...], year, material (path of the paper's Markdown file, relative to the store's material root, as other papers' material shows), aliases, note
+      - Dataset, Code, Model, Benchmark, Tool: name*, description*, identifiers, aliases, note
+      - Method, Task: name*, definition*, aliases, note. A named object not yet described can be a stub: {kind, name, stub: true}
+      - Issue: text*, description, note. Proposition: text*, note
+      - Claim: text*, note; needs FROM. Experiment: text*, anchors* (table or figure ids such as [S5.T3]), note; needs FROM and EVALUATES
+      - Contribution: text*, stated_by* (paper | agent), note; needs FROM and ABOUT. Observation: text*, note; needs ABOUT
+      Relations: FROM {to: paper, locators: ["<section>::<start>:<end>"]} (an Observation may come FROM an artifact); ABOUT; EVALUATES {to, role: target | baseline}; USES {to, role: evaluation_data | training_data | analysis_input | tooling | retrieval_corpus}; ON_TASK; EVALUATED_ON; SUPPORTED_BY; SUPPORTS / OPPOSES {to, stated_by, description} between Claims; CITES; PART_OF; DERIVED_FROM; IMPLEMENTS; FOR_TASK; BROADER; HAS_PART; ADDRESSES; OVERLAPS_WITH (endpoints as in Traverse). Any edge may also carry description and source_refs.
+
+      Workflow: call without apply (a dry run) and read the graph-plan. status blocked lists errors, each with at, msg and often fix; change the doc and submit again. A dedup error lists stored candidates for a new Entity or Concept: if one is the same object, replace your $ref by its id everywhere (your fields then edit it); if none is, add confirm: {$ref: {distinct_from: [candidate ids]}}. When status is ready, submit the same doc with apply: true; the graph-result gives the commit id and the id of every $ref. status noop means nothing would change.
     parameters:
-      doc: The graph-doc as YAML text.
-      source: Source label, recorded in the commit and on new name keys
-      apply: Commit; without it only a dry run
-      message: Commit message.
-      base: The commit the writer's view was read at; only recorded
-      dedup: Check new objects against stored ones (default true)
+      doc: The graph-doc as YAML text (see the description for its form).
+      source: A short label of where this knowledge comes from, such as a paper or session; recorded in the commit and on new names.
+      apply: true commits; omit or false for a dry run.
+      message: One line saying what this commit does.
+      base: The commit (meta.snapshot) at which you read the nodes you are changing; recorded only.
+      dedup: Check new Entities and Concepts against stored ones (default true); leave it on.
 
   Extract:
     title: Extract
-    description: >-
-      After reading the source, record the specific values needed (result numbers, settings, release addresses)
-      as typed records. Each row names its source reference; record keys come from the key fields.
+    description: |-
+      Record specific values read from the source (result numbers, settings, release addresses) as typed rows, so later work can cite each row. params declares the table, payload holds the rows.
+
+      Each row needs a source: the reference of the lines it was read from. Record keys are built from the key fields: their values are lowercased, other characters become -, and the parts are joined with - (method DLinear, dataset ETTh1, horizon 96 -> dlinear-etth1-96). Keys must be unique within the artifact, so put every field that tells rows apart into key (for result tables: method, dataset, horizon, metric, setting). Later artifacts cite a row as <artifact id>#<key>.
+      Example params: {schema: {fields: {method: ref, dataset: string, horizon: integer, mse: number}, required: [mse], key: [method, dataset, horizon]}}
+      Example row: {method: <method id>, dataset: ETTh1, horizon: 96, mse: 0.375, source: <material id>::<section>::<start>:<end>}
     parameters:
       <<: *artifact
-      params: "{schema: {fields, required?, key}}"
-      params.schema.fields: name -> string | number | integer | boolean | ref | enum[a, b]
-      payload: "{rows, note?}"
-      payload.rows[]: <fields> and source
-      payload.note: "Required when rows is empty: what was read and why nothing."
+      params: "{schema: {fields, required?, key}}: the table declaration, as a JSON object."
+      params.schema.fields: "field name -> type: string | number | integer | boolean | ref | enum[a, b]. Names use letters, digits and _, start with a letter; key and source are reserved."
+      payload: "{rows, note?}: the extracted rows, as a JSON object."
+      payload.rows[]: One object per record with its field values and source.
+      payload.note: "Required when rows is empty: what was read and why nothing was recorded."
 
   Summarize:
     title: Summarize
     description: >-
-      Compress and reorganize what the inputs already say. Every paragraph must cite at least one input in
-      square brackets; use Generate when inference or new content is needed.
+      Compress and reorganize what the inputs already say, without adding new conclusions. Every paragraph must
+      cite at least one input in square brackets, such as [exp_0004] or [art_0003#dlinear-etth1-96]. Use Generate
+      when the text adds inference, answers or plans.
     parameters:
       <<: *artifact
-      params: "{focus}"
-      payload: "{text}"
+      params: "{focus}: what the summary is about."
+      payload: "{text}: the summary."
       payload.text: Markdown; cite inputs as [ref].
 
   Generate:
     title: Generate
     description: >-
-      Produce new content: a final answer, a draft, an idea or a plan. Numbers, comparisons and judgments
-      should cite the artifacts they come from.
+      Produce new content: a final answer, a draft, an idea or a plan. Cite the inputs that numbers, comparisons
+      and judgments come from in square brackets, such as [art_0007#etth1~patchtst] or [exp_0004]; the result reports
+      how many paragraphs cite something. For a table that compares results across papers, build it with
+      MatrixConstruct first and cite it, rather than writing the numbers only in this text.
     parameters:
       <<: *artifact
-      params: "{purpose: answer | draft | idea | plan | other}"
-      payload: "{text}"
+      params: "{purpose}: answer | draft | idea | plan | other."
+      payload: "{text}: the content."
       payload.text: Markdown; cite inputs as [ref].
 
   Check:
     title: Check
-    description: >-
-      Judge whether pairs of items agree or are comparable on declared dimensions (split, horizon, metric, ...).
-      Give exactly one T/F/U judgment per pair and dimension.
+    description: |-
+      Judge whether pairs of items agree or are comparable on declared dimensions, such as data split, look-back window, horizon or metric. Give exactly one judgment per pair and dimension: T (agree), F (differ) or U (cannot tell); T and F need basis, U needs reason. Declare only the pairs you need: all_pairs over many items gives many judgments.
+      Record keys are <k1>~<k2> for each pair, in the order the pair was declared; cite a pair as <artifact id>#<k1>~<k2>.
+      Example params: {items: {dlinear: <exp id>, patchtst: <exp id>}, pairs: all_pairs, dimensions: [{id: split, question: Same train/val/test split?}]}
+      Example judgment: {pair: [dlinear, patchtst], dimension: split, value: T, basis: [<source reference>]}
     parameters:
       <<: *artifact
-      params: "{items, pairs, dimensions}"
-      params.items: item key -> reference; at least two
-      params.pairs: all_pairs or a list of [k1, k2]
-      payload: "{judgments}"
-      payload.judgments[]: "{pair, dimension, value, basis, reason}"
+      params: "{items, pairs, dimensions}: what is compared, as a JSON object."
+      params.items: "item key -> reference; at least two. Keys use letters, digits, _ . and -."
+      params.pairs: all_pairs, or a list of [k1, k2] item-key pairs.
+      payload: "{judgments}: one judgment per pair and dimension, as a JSON object."
+      payload.judgments[]: "{pair: [k1, k2], dimension, value: T | F | U, basis?, reason?}"
       payload.judgments[].basis: *basis
       payload.judgments[].reason: *reason
 
   Verify:
     title: Verify
     description: >-
-      Judge whether a claim holds under the given evidence (T supported, F refuted, U insufficient) and state
-      the conditions under which it holds. Finding no support is U, not F.
+      Judge whether one claim holds under the given evidence: T supported, F refuted, U insufficient, and state
+      the conditions under which it holds. Finding no support is U, not F. The claim is a reference to a stored
+      Claim (or other record) or {text} for a statement of your own.
     parameters:
       <<: *artifact
-      params: "{claim}"
-      params.claim: A reference or {text}
-      payload: "{value, conditions?, basis, reason}"
+      params: "{claim}: what is verified."
+      params.claim: A reference, such as claim_0004, or {text}.
+      payload: "{value, conditions?, basis, reason}: the judgment, as a JSON object."
       payload.basis: *basis
       payload.reason: *reason
 
   Filter:
     title: Filter
-    description: >-
-      Judge item by item whether each satisfies one condition: candidate identity, applicability, relevance.
-      Give exactly one T/F/U judgment per item; U is kept, not dropped.
+    description: |-
+      Judge item by item whether each satisfies one condition: whether a candidate is the same object, whether a method applies, whether a record is relevant. Give exactly one judgment per item: T (satisfies), F (does not) or U (cannot tell); U is kept, not dropped. T and F need basis, U needs reason. Record keys are the item keys; cite one as <artifact id>#<item key>.
+      Example params: {items: {a: <method id>, b: <method id>}, condition: {id: same-as-dlinear, text: Is this the DLinear method?}}
     parameters:
       <<: *artifact
-      params: "{items, condition: {id, text}}"
-      params.items: item key -> reference
-      payload: "{judgments}"
-      payload.judgments[]: "{key, value, basis, reason}"
+      params: "{items, condition: {id, text}}: what is judged, as a JSON object."
+      params.items: "item key -> reference. Keys use letters, digits, _ . and -."
+      payload: "{judgments}: one judgment per item, as a JSON object."
+      payload.judgments[]: "{key, value: T | F | U, basis?, reason?}"
       payload.judgments[].basis: *basis
       payload.judgments[].reason: *reason
 
   MatrixConstruct:
     title: Matrix
     description: |-
-      Organize a cross-paper comparison as a matrix: methods x datasets, issues x methods, methods x design elements. Declare rows, columns and the cell type, then give exactly one cell per row and column.
+      Organize a comparison across papers as a matrix: methods x datasets, issues x methods, methods x design elements. Declare rows, columns and the cell type, then give exactly one cell per row and column. This is the place for comparison tables; Generate can cite the matrix afterwards.
 
-      Guidelines:
-      - Use MatrixConstruct for cross-paper comparisons; check comparability with Check first.
+      - Check comparability with Check first, and cite those judgments or extracted rows (<artifact id>#<record key>) as cell basis.
       - Give basis for a cell whenever you can.
-      - For an empty cell, say in its note whether the value is not reported, not applicable, or not checked.
+      - For an empty cell (value null), say in its note whether the value is not reported, not applicable, or not checked.
+      Record keys are <row>~<col>; cite a cell as <artifact id>#<row>~<col>.
+      Example params: {rows: {dlinear: <method id>, patchtst: <method id>}, columns: {etth1_96: {text: "ETTh1, horizon 96, MSE"}}, cell: {type: number}}
     parameters:
       <<: *artifact
-      params: "{rows, columns, cell: {type, question?}}"
-      params.rows: row key -> reference or {text}
-      params.columns: column key -> reference or {text}
-      payload: "{cells, note?}"
+      params: "{rows, columns, cell: {type, question?}}: the matrix declaration, as a JSON object. cell.type is string | number | integer | boolean | ref | enum[a, b]."
+      params.rows: "row key -> reference or {text}. Keys use letters, digits, _ . and -."
+      params.columns: "column key -> reference or {text}. Keys use letters, digits, _ . and -."
+      payload: "{cells, note?}: the cells, as a JSON object."
       payload.cells[]: "{row, col, value (null when empty), basis?, note?}"
