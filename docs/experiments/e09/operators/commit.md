@@ -26,7 +26,7 @@
 
 新设计借鉴 OpenAI Agents SDK 的 `apply_patch`（`references/repos/openai-agents-python/examples/tools/apply_patch.py`），取的是它的思路，不是它的操作：
 
-- **读写同形。** Agent 在 Search 或 Traverse 后看到的视图是一份 YAML 文档，写入时交的也是同一种 YAML 文档。
+- **读写同形。** Agent 用 Traverse 读出的视图是一份 YAML 文档（Search 只给摘录，不是可交回的视图），写入时交的也是同一种 YAML 文档。
 - **交状态，不交指令。** 交上来的文档表示“这些节点应当是这个样子”，由中间件计算它与库中现状的差异，再执行。
 - **不模拟文件系统。** 没有真实目录，也不按对象切分文件；一次查询的视图合成一份文档，修改时整份交回。
 - **只有一种格式。** 新入库、在视图上修改、追加理解、删除、合并都写成 graph-doc，不再区分论文表单与增补表单。

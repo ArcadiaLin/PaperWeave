@@ -98,7 +98,7 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 | `workspace` | 实验目录的生成 |
 | `config`、`env_check` | 路径与连接参数；环境自检（`make check`） |
 | `operators/base` | `Operator`（name、family、parameters、execute；只有结构，文字在 `mcp/server.yml`）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
-| `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact |
+| `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact；结果只给摘录，按 16 KB 容量分配（`query/excerpts`） |
 | `operators/db/resolve` | Resolve：id → alias → 语义三级解析，Entity 与 Concept |
 | `operators/db/traverse` | Traverse：按端点表校验每一跳，传递性关系的 `depth`，路径绑定；含 `USED` |
 | `operators/db/read_evidence` | ReadEvidence：按材料 id 或论文、Artifact 的 id 读行，校验文件哈希 |

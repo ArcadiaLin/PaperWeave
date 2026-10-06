@@ -68,4 +68,4 @@ def test_requests_are_checked(store: Store, request_: dict, at: list[str]) -> No
 
 def test_call_dispatches_to_the_operator(store: Store) -> None:
     out = call(Context(store, AT), {"op": "Search", "type": "Entity", "kinds": ["Paper"]})
-    assert not out.is_error and out.details["meta"]["items"] == ["paper_0001"]
+    assert not out.is_error and [r["id"] for r in out.details["results"]] == ["paper_0001"]

@@ -13,8 +13,9 @@
      见 :mod:`e09.operators.agent`）；
    - ``params`` 与 ``payload`` 中出现的每个引用都由 ``inputs`` 覆盖：与某一项相同；或是来源引用，所指的行落在
      同一材料的某个来源引用的行范围内（章节名不比较）；或是记录引用，所属的 Artifact 列在 ``inputs`` 中（记录须
-     存在）。来源引用的开头写材料 id 或材料所属的节点 id 都算同一个引用；文档头部的 ``nodes_used`` 统一写成
-     材料 id，与 ReadEvidence 读取的写法相同。
+     存在）；或是对象引用，正是某一项 ``USED`` 的终点（如论文，它的材料中的行已列在 ``inputs`` 中）。来源引用的
+     开头写材料 id 或材料所属的节点 id 都算同一个引用；文档头部的 ``nodes_used`` 统一写成材料 id，与 ReadEvidence
+     读取的写法相同。
 
 2. **幂等**：相同 ``artifact_key``（``op``、``inputs``、``params``、``payload`` 与 ``formed_by`` 的哈希）视为重试，
    返回已有的 Artifact，不重复写入。
@@ -284,6 +285,8 @@ def _resolve(store: Store, texts: list[str], output: Output, problems: Problems)
             return exact
         if ref.kind == "record":
             return next((i for i in inputs if i.ref.kind == "object" and i.ref.head == ref.head), None)
+        if ref.kind == "object":  # 如论文：它的材料中的行已列在 inputs 中
+            return next((i for i in inputs if i.target == ref.head), None)
         material = found.get(ref.head) if ref.kind == "source" else None
         if material is None:
             return None

@@ -85,12 +85,12 @@ def test_records_of_an_artifact_can_be_used(store: Store) -> None:
 
 def test_search_finds_artifacts_only_when_asked(store: Store) -> None:
     by_op = search(store, "Artifact", where={"op": "Filter"})
-    assert by_op["meta"]["items"] == ["art_0002"]
+    assert [r["id"] for r in by_op["results"]] == ["art_0002"]
     by_text = search(store, "Artifact", "DLinear MSE Weather")
-    assert by_text["meta"]["items"][0] == "art_0001"
+    assert by_text["results"][0]["id"] == "art_0001"
     used = search(store, "Artifact", where={"used": "paper_0001"})
-    assert used["meta"]["items"] == ["art_0001", "art_0002"]
-    assert search(store, "Content", "DLinear MSE Weather")["meta"]["items"] == ["exp_0001"]
+    assert [r["id"] for r in used["results"]] == ["art_0001", "art_0002"]
+    assert [r["id"] for r in search(store, "Content", "DLinear MSE Weather")["results"]] == ["exp_0001"]
 
 
 def test_artifact_views_and_used_traversal(store: Store) -> None:
@@ -149,8 +149,12 @@ def test_the_operator_takes_session_and_formed_by_from_the_context(store: Store)
     assert out.details["status"] == "existing" and out.details["artifact"] == "art_0001"  # 与直接写入的请求相同
 
 
-def test_a_different_document_with_the_same_title_gets_a_number(store: Store) -> None:
-    out = write(store, {**EXTRACT, "abs": "The same records, described differently."})
-    assert out["status"] == "created" and out["document"]["path"] == "artifacts/DLinear MSE on ETTh1 and Weather (1).md"
-    first = store.query("MATCH (m:Material)-[:MATERIAL_OF]->(:Artifact {id: 'art_0001'}) RETURN m.path AS p")
-    assert first[0]["p"] == "artifacts/DLinear MSE on ETTh1 and Weather.md"  # 已有的文档不动
+def test_documents_are_named_by_title_and_numbered_when_taken(store: Store) -> None:
+    title = "artifacts/DLinear MSE on ETTh1 and Weather"
+    same = write(store, {**EXTRACT, "formed_by": "another"})  # 另一个 Artifact，文档内容相同
+    assert same["status"] == "created" and same["document"]["path"] == f"{title}.md"
+    rows = [{**EXTRACT["payload"]["rows"][0], "mse": 0.376}, EXTRACT["payload"]["rows"][1]]
+    other = write(store, {**EXTRACT, "payload": {"rows": rows}})
+    assert other["status"] == "created" and other["document"]["path"] == f"{title} (1).md"
+    paths = store.query("MATCH (m:Material)-[:MATERIAL_OF]->(:Artifact {id: 'art_0001'}) RETURN m.path AS p")
+    assert paths[0]["p"] == f"{title}.md"  # 已有的文档不动

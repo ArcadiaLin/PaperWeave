@@ -118,10 +118,11 @@ def _logging(path: str | None) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     if path:
         handlers.append(logging.FileHandler(path, encoding="utf-8"))
+    root = logging.getLogger("e09")  # 服务自己的记录与各算子的记录（如 e09.search 的排名依据）
     for handler in handlers:
         handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-        log.addHandler(handler)
-    log.setLevel(logging.INFO)
+        root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
 
 __all__ = ["enabled", "main", "serve"]

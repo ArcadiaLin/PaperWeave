@@ -42,7 +42,7 @@ Agent 算子要求声明输入、逐项给出判断与依据、在正文中标�
 
 ### 2.2 对象视图
 
-中间件算子返回的对象视图就是 graph-doc（读写同形，格式见 `docs/experiments/e09/operators/commit.md` §2 与 §6 R）：`nodes` 以对象 id 为键，字段按写入时的拼写给出，原样交回 `Commit` 为 `noop`。
+`Traverse` 返回的对象视图就是 graph-doc（读写同形，格式见 `docs/experiments/e09/operators/commit.md` §2 与 §6 R）：`nodes` 以对象 id 为键，字段按写入时的拼写给出，原样交回 `Commit` 为 `noop`。
 
 - **字段。** `kind`、`name`、`aliases`（由 NameKey 装配，不含与 `name` 规范化后相同的写法）、`identifiers`、`stub`、`year`、`material`、`definition` / `description` / `text`、`anchors`、`stated_by`、`note` 等；自然键（`exp_key`、`content_key`）与 `embedding` 等派生属性不出现。
 - **关系。** 每个节点带它**全部**的模型出边，一个关系键列出该类型出边的完整集合（只列一部分交回时会删掉其余的边）；边上的属性写在边里，如 `{to, role}`、`{to, locators}`。入边不出现在节点上，经 `Traverse` 沿入边走到对方节点，对方节点的出边里就有这条边。
@@ -53,7 +53,7 @@ Observation 的 `ABOUT` 始终给出完整的对象集合：某个对象命中�
 
 ### 2.3 AccessResult
 
-`Search` 与 `Traverse` 返回读视图：一份 graph-doc，`nodes` 是结果涉及的对象视图（第 2.2 节），`meta` 是 AccessResult：
+`Traverse` 返回读视图：一份 graph-doc，`nodes` 是结果涉及的对象视图（第 2.2 节），`meta` 是 AccessResult。`Search` 返回结果视图（第 3.1 节），只有摘录，不带关系；它的 `meta` 是下表中的一部分，其余字段写入日志：
 
 ```text
 AccessResult = {query, items, bindings, source_refs, missing, coverage, continuation, diagnostics}
@@ -63,21 +63,21 @@ AccessResult = {query, items, bindings, source_refs, missing, coverage, continua
 | --- | --- |
 | `query` | 本次请求的参数 |
 | `items` | 主体结果的 id，按结果顺序去重；下一步取 `refs(X)` 默认只取这里的引用 |
-| `bindings` | 每个结果的取得依据：`Search` 为精确命中的方式，或各通道的名次与融合分（按结果 id 给出；按结构条件枚举时为空），`Traverse` 为每条路径，写成节点与关系交替的列表，如 `[method_0028, <-EVALUATES-, exp_0001, -USES->, dataset_0006]`；边上属性在起点一侧节点的出边里 |
+| `bindings` | 每个结果的取得依据：`Search` 为精确命中的方式，或各通道的名次与融合分（按结果 id 给出；按结构条件枚举时为空；只写入日志），`Traverse` 为每条路径，写成节点与关系交替的列表，如 `[method_0028, <-EVALUATES-, exp_0001, -USES->, dataset_0006]`；边上属性在起点一侧节点的出边里 |
 | `source_refs` | 结果涉及的来源引用（写成材料 id 的形式），按出现顺序去重；只定位，不读取 |
 | `missing` | 库中不存在的引用参数：`{ref, param, missing_in: store}` |
 | `coverage` | 参数、范围、预算、已匹配与返回数量、是否截断、通道状态、快照（当前提交的 id） |
 | `continuation` | 截断时的续取位置；为空表示已取完 |
 | `diagnostics` | 不进入结果、但调用方需要知道的数量与引用，例如角色缺失、可展开的额外匹配 |
 
-`Search` 的 `nodes` 只有本页结果；`Traverse` 的 `nodes` 是本页路径上的全部节点（起点、中间节点与终点）。
+`Traverse` 的 `nodes` 是本页路径上的全部节点（起点、中间节点与终点）。
 
 ### 2.4 预算、错误与会话
 
-- **预算**是一次调用返回的主体结果数上限；截断必须在 `coverage` 中可见，续取时传回 `continuation`，其余参数不变。
+- **预算**是一次调用返回的主体结果数上限；截断必须可见（`Traverse` 在 `coverage` 中，`Search` 为非空的 `continuation`），续取时传回 `continuation`，其余参数不变。
 - **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。所有算子没有完成时的返回同形：`{status, errors}`，`status` 为 `rejected`（请求没有被执行，什么也没有写入）、`blocked`（`Commit` 的阻塞项）或 `conflict`（提交时与并发写入冲突），`errors` 的每一项为 `{rule, at, msg}`，`at` 指向出错的参数或节点，`Commit` 的阻塞项另带 `candidates` 与 `fix`。请求的顶层形状不对（未知参数、缺少必填参数）记为 `format`，参数的取值不对记为 `schema`。
 - **数据缺失**（引用不在库中、关系无记录）返回空集合与覆盖信息，不当作错误。
-- **执行失败**（向量服务不可用、索引缺失）记入 `coverage` 的通道状态；因失败而没有结果时不当作空结果。
+- **执行失败**（向量服务不可用、索引缺失）记入通道状态（`Search` 为 `meta.failed`）；因失败而没有结果时不当作空结果。
 - **会话**：Agent 算子的会话标识 `session` 与形成者 `formed_by` 记在 Artifact 上，用于按会话追溯产物。二者是调用环境的信息，由调用方给出（MCP 服务：进程启动时生成的会话与环境变量 `E09_FORMED_BY`；命令行：`--session`、`--formed-by`），不是算子参数；算子作为工具时，参数中也没有 `op`，工具名就是算子名。
 
 ## 3. 中间件算子
@@ -133,6 +133,21 @@ Search(type, query?, kinds?, where={}, expand={}, scope="global", budget, contin
 **诊断：** 写了 `uses` 条件时，另报 `role_missing`（`USES` 指向该数据集但没有 `role` 的实验）与 `expandable`（评测数据落在其组成部分上、本次没有用 `expand.parts` 选中的实验），只给数量与引用。
 
 **默认不查 Artifact。** `type` 为 Entity、Concept、Content 时结果中不出现 Artifact；要找已有的工作产物，显式写 `type=Artifact`。
+
+**输出：** 结果视图 `{results, meta}`，不是 graph-doc。Search 只负责发现：每个结果给识别字段与检索字段的开头摘录，不带关系；对象的完整字段与全部关系用 `Traverse` 读取（`path` 为空即读取起点对象），原文用 `ReadEvidence` 读取。
+
+| 类别 | 识别字段 | 摘录字段 |
+| --- | --- | --- |
+| Entity | `id`、`kind`、`name`、`year` | `description` |
+| Concept | `id`、`kind`、`name` | `definition` 或 `text` |
+| Content | `id`、`kind`、`paper`（`FROM` 的论文 id）、`anchors`、`source_refs` | `text`，另有 `note` |
+| Artifact | `id`、`op`、`title`、`document`（文档路径）、`stale`（有时） | `abs` |
+
+摘录字段即该类别全文与向量检索的字段；Content 另带 `note`，原文中的问题（印刷错误、推断的设置）常记在这里。
+
+**容量。** MCP 客户端会截断过长的工具结果（pi 为 20 KB，截掉中间部分，且不能配置），所以整份结果按 YAML 字节数控制在 16 KB 以内：先放下各结果的识别字段与 `meta`，放不下时从末尾去掉结果、续取位置随之前移；余下的容量平均分给各结果的摘录，摘录本来就短的结果省下的部分再平均分给其余结果；一个结果内先给 `text` 再给 `note`。超出份额的字段在 UTF-8 字符边界截断，末尾写 `…`，其后的 `<字段>_bytes` 给出原文长度。
+
+`meta` 为 `returned`、`matched`、`continuation`、`snapshot`、`size`（`{limit, used, cut}`，`cut` 是被截断的字段数），以及非空时的 `missing`、`diagnostics`、`expanded`（`expand` 实际放宽到的引用）与 `failed`（失败的通道及原因）。取得依据与覆盖信息（通道状态、候选池、向量超取）写入日志 `e09.search`（MCP 服务写在 stderr 与 `E09_MCP_LOG`）。
 
 **不做的事：** 不接受自然语言的 `where`；不按语义判断"是否适用"；Benchmark 引用不当作数据集条件。
 
@@ -240,7 +255,7 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 **共同校验（任一不过即整次拒绝，不写入）：**
 
 1. `inputs` 是不重复的引用列表。其中的对象引用、Artifact 与记录引用都在库中（记录引用的键须出现在该 Artifact 文档的数据块中）；来源引用格式正确，所指材料在库中，文件与登记的哈希一致，行号不越界。
-2. `params` 与 `payload` 中出现的每个引用（引用参数、`basis`、`source`、`ref` 字段与正文中方括号里的引用）都属于 `inputs`，即由 `inputs` 覆盖：与其中某一项相同；或是来源引用，所指的行落在同一材料的某个来源引用的行范围内（章节名不比较）；或是记录引用，所属的 Artifact 列在 `inputs` 中（记录须存在）。来源引用的开头写材料 id 或材料所属的节点 id 视为同一个引用。覆盖了某个引用的 `inputs` 项不再提示 `unused-input`。
+2. `params` 与 `payload` 中出现的每个引用（引用参数、`basis`、`source`、`ref` 字段与正文中方括号里的引用）都属于 `inputs`，即由 `inputs` 覆盖：与其中某一项相同；或是来源引用，所指的行落在同一材料的某个来源引用的行范围内（章节名不比较）；或是记录引用，所属的 Artifact 列在 `inputs` 中（记录须存在）；或是对象引用，正是某一项 `USED` 的终点（如论文，它的材料中的行已列在 `inputs` 中）。来源引用的开头写材料 id 或材料所属的节点 id 视为同一个引用。覆盖了某个引用的 `inputs` 项不再提示 `unused-input`。
 3. `params` 与 `payload` 符合该算子的 schema；判断类的每个单元恰有一条判断（不能遗漏，也不能重复）。给了判断但不合格的单元只报不合格，不再另报遗漏。
 
 **返回：** `status` 为 `created`，或相同调用的重试返回 `existing`（第 5.4 节，此时 `commit` 为空）；`artifact` 为 Artifact 的 id；`commit` 为本次写入的提交 id；`document` 为产物文档的路径与 `material_ref`；`stats` 为该算子的统计（目前只有 `Generate`）；`render` 是文档正文（不含头部），可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示：`unused-input`（某个输入没有在 `params` 与 `payload` 中被引用）、`embedding`（提交后补算向量失败，提交保留）。
@@ -488,7 +503,7 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 
 | 支持 | 模块 |
 | --- | --- |
-| 结构条件、RRF 融合、读视图与只读字段、固定材料 | `query/conditions.py`、`query/fusion.py`、`query/view.py`、`query/materials.py` |
+| 结构条件、RRF 融合、读视图与只读字段、Search 的结果视图、固定材料 | `query/conditions.py`、`query/fusion.py`、`query/view.py`、`query/excerpts.py`、`query/materials.py` |
 | Artifact 的文档格式、共同写入路径、可能过期 | `artifact/document.py`、`artifact/write.py`、`artifact/stale.py` |
 | 数据模型、引用写法、名称精确键 | `model/schema.py`、`model/refs.py`、`model/namekey.py` |
 | 算子环境、库的版本记录与约束索引、连接、向量 | `store/store.py`、`store/database.py`、`store/graph.py`、`store/embedding.py` |

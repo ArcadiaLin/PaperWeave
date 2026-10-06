@@ -29,7 +29,12 @@ tools:
     title: Search
     description: >-
       Find objects of one type (Entity, Concept, Content or Artifact) by query and structural conditions.
-      Returns a read view: nodes with all their model edges, and meta with items, bindings and coverage.
+      Returns a ranked list of results: id, kind, name or title, and the opening part of the searched text
+      (description, definition, text and note, or abs); Content results also give their paper and source_refs.
+      Results carry no relations. To see an object's full fields and relations, call Traverse with start
+      [id] and an empty path; to read the source lines, pass source_refs to ReadEvidence.
+      The whole result is kept under 16 KB: the space is shared evenly between results, and a text cut short
+      ends with … followed by <field>_bytes, its full length. Fewer results per page give longer excerpts.
       Artifacts appear only with type=Artifact.
     parameters:
       type: One type per call.

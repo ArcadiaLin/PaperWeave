@@ -194,7 +194,7 @@ def test_matrix_needs_one_cell_per_row_and_column(store: Store) -> None:
 
 def test_a_reference_within_a_listed_one_is_covered(store: Store) -> None:
     """内容中的来源引用落在 inputs 中同一材料的某个行范围内即可，章节名不比较；记录引用所属的 Artifact 列在
-    inputs 中即可，记录须存在。覆盖它的那一项不再提示 unused-input。"""
+    inputs 中即可，记录须存在；对象引用是某一项的 USED 终点即可。覆盖它的那一项不再提示 unused-input。"""
     out = write(store, changed(EXTRACT, "payload.rows.1.source", "paper_0001::Comparison::11:11"))
     assert out["status"] == "created" and [w["at"] for w in out["warnings"]] == ["inputs[0]"]
     assert errors(store, changed(EXTRACT, "payload.rows.1.source", "paper_0001::Comparison::11:13")) == [
@@ -210,3 +210,6 @@ def test_a_reference_within_a_listed_one_is_covered(store: Store) -> None:
     )
     assert [(r["t"], r["role"]) for r in roles] == [("art_0001", ["claim"])]
     assert errors(store, changed(request, "params.claim", "art_0001#nope")) == [("reference", "params.claim")]
+
+    paper = call("Verify", [SOURCE], {"claim": "paper_0001"}, {"value": "T", "basis": SOURCE})
+    assert write(store, paper)["status"] == "created"  # 论文是 SOURCE 的 USED 终点

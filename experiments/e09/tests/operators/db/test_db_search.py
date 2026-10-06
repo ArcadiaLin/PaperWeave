@@ -1,4 +1,4 @@
-"""Search：结构条件、查询通道与排序、续取、数据缺失、诊断与契约错误。"""
+"""Search：结构条件、查询通道与排序、续取、数据缺失、诊断、结果视图的摘录与容量、契约错误。"""
 
 from __future__ import annotations
 
@@ -7,64 +7,69 @@ import dataclasses
 import pytest
 from conftest import problems
 
-from e09.operators.db.search import search
+from e09.operators.db.search import find, search
+from e09.query.excerpts import results
 from e09.store import ContractError, Store
+
+
+def ids(out: dict) -> list[str]:
+    return [r["id"] for r in out["results"]]
 
 
 def test_enumerates_by_structure_in_id_order(store: Store) -> None:
     out = search(store, "Content", kinds=["Experiment"], where={"evaluates": "method_0003", "role": "target"})
-    assert out["meta"]["items"] == ["exp_0001", "exp_0002"]
-    assert out["meta"]["coverage"]["order"] == "id"
-    assert list(out["nodes"]) == ["exp_0001", "exp_0002"]
+    assert ids(out) == ["exp_0001", "exp_0002"]
+    assert find(store, "Content", kinds=["Experiment"]).coverage["order"] == "id"
 
     baseline = search(store, "Content", kinds=["Experiment"], where={"evaluates": "method_0002", "role": "baseline"})
-    assert baseline["meta"]["items"] == ["exp_0001"]
+    assert ids(baseline) == ["exp_0001"]
     stubs = search(store, "Concept", kinds=["Method"], where={"stub": False})
-    assert stubs["meta"]["items"] == ["method_0001", "method_0002", "method_0003"]
+    assert ids(stubs) == ["method_0001", "method_0002", "method_0003"]
 
 
 def test_conditions_on_the_same_record_are_conjunctive_and_lists_disjunctive(store: Store) -> None:
     both = search(store, "Content", kinds=["Experiment"], where={"uses": "dataset_0002", "evaluates": "method_0003"})
-    assert both["meta"]["items"] == ["exp_0001"]
+    assert ids(both) == ["exp_0001"]
     either = search(store, "Concept", where={"broader": ["method_0001", "task_0001"]}, kinds=["Method", "Task"])
-    assert either["meta"]["items"] == ["method_0003", "task_0002"]
+    assert ids(either) == ["method_0003", "task_0002"]
 
 
 def test_expand_parts_relaxes_a_dataset_reference(store: Store) -> None:
     plain = search(store, "Content", kinds=["Experiment"], where={"uses": "dataset_0001"})
-    assert plain["meta"]["items"] == []
+    assert ids(plain) == []
     assert plain["meta"]["diagnostics"]["expandable"]["refs"] == ["exp_0001"]
 
     expanded = search(store, "Content", kinds=["Experiment"], where={"uses": "dataset_0001"}, expand={"parts": 1})
-    assert expanded["meta"]["items"] == ["exp_0001"]
-    assert expanded["meta"]["coverage"]["expanded"] == {"dataset_0001": ["dataset_0002"]}
+    assert ids(expanded) == ["exp_0001"]
+    assert expanded["meta"]["expanded"] == {"dataset_0001": ["dataset_0002"]}
 
 
 def test_uses_requires_the_evaluation_role_and_reports_missing_roles(store: Store) -> None:
     out = search(store, "Content", kinds=["Experiment"], where={"uses": "dataset_0003"})
-    assert out["meta"]["items"] == ["exp_0001"]
+    assert ids(out) == ["exp_0001"]
     assert out["meta"]["diagnostics"]["role_missing"] == {"count": 1, "refs": ["exp_0002"]}
 
 
 def test_exact_name_hits_come_first(store: Store) -> None:
-    out = search(store, "Concept", {"mention": "D-Linear"}, kinds=["Method"])
-    meta = out["meta"]
-    assert meta["items"][0] == "method_0003"
-    assert meta["bindings"]["method_0003"] == {"exact": "name"}
-    assert meta["coverage"]["channels"]["semantic"] == "disabled"  # 测试中没有向量服务
+    found = find(store, "Concept", {"mention": "D-Linear"}, kinds=["Method"])
+    assert found.page[0] == "method_0003"
+    assert found.bindings["method_0003"] == {"exact": "name"}
+    assert found.coverage["channels"]["semantic"] == "disabled"  # 测试中没有向量服务
 
-    by_id = search(store, "Entity", {"identifier": "arxiv:2205.13504"})
-    assert by_id["meta"]["items"] == ["paper_0001"]
-    assert by_id["meta"]["bindings"]["paper_0001"] == {"exact": "identifier"}
+    by_id = find(store, "Entity", {"identifier": "arxiv:2205.13504"})
+    assert by_id.page == ["paper_0001"]
+    assert by_id.bindings["paper_0001"] == {"exact": "identifier"}
 
 
 def test_text_channel_ranks_within_the_conditions(store: Store) -> None:
     out = search(store, "Content", "decomposition ablation", kinds=["Experiment"])
-    assert out["meta"]["items"][0] == "exp_0002"
-    assert out["meta"]["bindings"]["exp_0002"]["lexical_text"] == 1
+    assert ids(out)[0] == "exp_0002"
+    assert (
+        find(store, "Content", "decomposition ablation", kinds=["Experiment"]).bindings["exp_0002"]["lexical_text"] == 1
+    )
 
     scoped = search(store, "Content", "decomposition ablation", where={"uses": "dataset_0002"}, kinds=["Experiment"])
-    assert scoped["meta"]["items"] == []
+    assert ids(scoped) == []
 
 
 def test_a_failing_channel_is_reported_not_treated_as_empty(store: Store) -> None:
@@ -72,29 +77,57 @@ def test_a_failing_channel_is_reported_not_treated_as_empty(store: Store) -> Non
         raise ConnectionError("embedding service unreachable")
 
     out = search(dataclasses.replace(store, embed=embed), "Concept", {"mention": "DLinear"})
-    assert out["meta"]["coverage"]["channels"]["semantic"].startswith("error: ConnectionError")
-    assert out["meta"]["items"][0] == "method_0003"
+    assert out["meta"]["failed"]["semantic"].startswith("error: ConnectionError")
+    assert ids(out)[0] == "method_0003"
 
 
 def test_budget_and_continuation(store: Store) -> None:
     first = search(store, "Entity", kinds=["Dataset"], budget=2)
-    assert first["meta"]["items"] == ["dataset_0001", "dataset_0002"]
-    assert first["meta"]["coverage"]["truncated"] is True
+    assert ids(first) == ["dataset_0001", "dataset_0002"]
     rest = search(store, "Entity", kinds=["Dataset"], budget=2, continuation=first["meta"]["continuation"])
-    assert rest["meta"]["items"] == ["dataset_0003"]
+    assert ids(rest) == ["dataset_0003"]
     assert rest["meta"]["continuation"] is None
 
 
 def test_scope_limits_content_to_papers(store: Store) -> None:
     out = search(store, "Content", kinds=["Experiment"], scope=["paper_0001"])
-    assert out["meta"]["items"] == ["exp_0001", "exp_0002"]
-    assert "material_" in out["meta"]["source_refs"][0]
+    assert ids(out) == ["exp_0001", "exp_0002"]
+    first = out["results"][0]
+    assert first["paper"] == "paper_0001" and first["source_refs"][0].startswith("material_")
+    assert "EVALUATES" not in first and "FROM" not in first  # 结果不带关系，用 Traverse 读
 
 
 def test_missing_references_return_an_empty_result(store: Store) -> None:
     out = search(store, "Content", kinds=["Experiment"], where={"evaluates": "method_0099"})
-    assert out["meta"]["items"] == [] and out["nodes"] == {}
+    assert ids(out) == []
     assert out["meta"]["missing"] == [{"ref": "method_0099", "param": "where.evaluates", "missing_in": "store"}]
+
+
+def test_excerpts_share_the_size_limit(store: Store) -> None:
+    page = ["exp_0001", "exp_0002"]
+    state = store.graph.local_state(page)
+    full = results("Content", state, page, 0, 2)
+    assert full["meta"]["size"]["cut"] == 0
+    original = {(r["id"], f): r[f] for r in full["results"] for f in ("text", "note") if f in r}
+
+    limit = full["meta"]["size"]["used"] - 60
+    tight = results("Content", state, page, 0, 2, limit=limit)
+    assert tight["meta"]["size"]["used"] <= limit and tight["meta"]["size"]["cut"] >= 1
+    for r in tight["results"]:
+        for field in (k.removesuffix("_bytes") for k in r if k.endswith("_bytes")):
+            text = original[r["id"], field]
+            assert r[field].endswith("…") and text.startswith(r[field][:-1])
+            assert r[f"{field}_bytes"] == len(text.encode())
+
+    short = results("Content", state, page, 0, 2, limit=1)  # 识别字段都放不下：从末尾去掉结果
+    assert ids(short) == ["exp_0001"] and short["meta"]["continuation"] == 1
+
+
+def test_shares_are_even_and_short_excerpts_give_back() -> None:
+    from e09.query.excerpts import _shares
+
+    assert _shares([10, 100, 100], 150) == [10, 70, 70]
+    assert _shares([10, 20], 100) == [10, 20]
 
 
 @pytest.mark.parametrize(

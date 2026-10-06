@@ -1,12 +1,14 @@
 """Search：在一个类别内按查询与结构条件发现对象（docs/designs/v2/operators.md §3.1）。
 
-    search(type, query?, kinds?, where={}, expand={}, scope="global", budget=10, continuation?) -> 读视图
+    search(type, query?, kinds?, where={}, expand={}, scope="global", budget=10, continuation?) -> 结果视图
 
 - 不给 ``query`` 时按结构条件枚举，按 id 排序。
 - 给 ``query`` 时，精确命中（Entity 的标识，名称的 NameKey 精确键）排在前面，不计分；其余通道
   （名称词面、文本全文、向量）按 RRF 融合，不设阈值。各通道的召回都在 ``kinds``、``where`` 与 ``scope`` 之内；
   向量索引先超取再过滤，可能漏掉条件内的可行候选，超取数记入 ``coverage``。
-- 返回读视图（graph-doc）：``nodes`` 是本页结果，``meta`` 是 AccessResult 的其余字段。
+- 返回结果视图（:mod:`e09.query.excerpts`）：每个结果只有识别字段与检索字段的开头摘录，不带关系，整份结果按
+  容量上限截取。完整对象与关系用 Traverse 读取。各结果的取得依据（精确命中方式、各通道名次与融合分）与覆盖
+  信息（通道状态、候选池、向量超取）写入日志 ``e09.search``；通道失败另在 ``meta.failed`` 中给出。
 
 ``type`` 为 Entity、Concept、Content 时结果中不出现 Artifact；要找已有的工作产物，显式写 ``type=Artifact``。
 Artifact 没有 kind，按 ``where.op`` 筛选；查询只有 ``text``，在 ``title`` 与 ``abs`` 上检索。
@@ -14,15 +16,18 @@ Artifact 没有 kind，按 ``where.op`` 筛选；查询只有 ``text``，在 ``t
 
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from ...artifact.stale import readonly
 from ...model.namekey import name_key
 from ...model.schema import ARTIFACT, KINDS, NAMED, NAMESPACES
 from ...query.conditions import Compiled, compile_where
+from ...query.excerpts import results
 from ...query.fusion import POOL, RRF_K, fuse, tokens
-from ...query.view import render, source_refs_of
 from ...store.embedding import EMBED_MODEL, VECTOR_INDEXES
 from ...store.store import ContractError, Store
 from ..base import STRINGS, TERMS, db_operator, schema
@@ -54,6 +59,27 @@ OVERFETCH = 5
 DEFAULT_BUDGET = 10
 MAX_BUDGET = 100
 
+log = logging.getLogger("e09.search")
+
+
+@dataclass(frozen=True)
+class Found:
+    """一次检索的全部排名与依据：``ranked`` 是全部匹配的 id，本页为 ``ranked[offset : offset + budget]``。"""
+
+    request: dict[str, Any]
+    ranked: list[str]
+    offset: int
+    budget: int
+    bindings: dict[str, Any]
+    coverage: dict[str, Any]
+    missing: list[dict[str, str]]
+    diagnostics: dict[str, Any]
+    expanded: dict[str, Any]
+
+    @property
+    def page(self) -> list[str]:
+        return self.ranked[self.offset : self.offset + self.budget]
+
 
 def search(
     store: Store,
@@ -66,6 +92,33 @@ def search(
     budget: int = DEFAULT_BUDGET,
     continuation: int | None = None,
 ) -> dict[str, Any]:
+    found = find(store, type, query, kinds, where, expand, scope, budget, continuation)
+    page = found.page
+    state = store.graph.local_state(page)
+    artifacts = readonly(store, page) if type == ARTIFACT else {}
+    failed = {k: v for k, v in found.coverage.get("channels", {}).items() if v.startswith("error")}
+    extra = {"missing": found.missing, "diagnostics": found.diagnostics, "expanded": found.expanded, "failed": failed}
+    extra = {k: v for k, v in extra.items() if v}
+    view = results(
+        type, state, page, found.offset, len(found.ranked), extra | {"snapshot": store.snapshot()}, artifacts
+    )
+    trace = {"query": found.request, "coverage": found.coverage, "bindings": found.bindings}
+    log.info("Search %s", json.dumps(trace, ensure_ascii=False, default=str))
+    return view
+
+
+def find(
+    store: Store,
+    type: str,  # 与契约中的参数名一致
+    query: str | Mapping[str, str] | None = None,
+    kinds: list[str] | str | None = None,
+    where: Mapping[str, Any] | None = None,
+    expand: Mapping[str, Any] | None = None,
+    scope: str | list[str] = "global",
+    budget: int = DEFAULT_BUDGET,
+    continuation: int | None = None,
+) -> Found:
+    """校验参数并排名；``search`` 在它之上取本页并生成结果视图。"""
     request = _request(type, query, kinds, where, expand, scope, budget, continuation)
     problems: list[dict[str, str]] = []
     if type not in TYPES:
@@ -107,21 +160,17 @@ def search(
     page = ranked[offset : offset + budget]
     more = offset + budget < len(ranked)
     coverage.update(matched=len(ranked), returned=len(page), truncated=more, snapshot=store.snapshot())
-    state = store.graph.local_state(page)
-    artifacts = readonly(store, [i for i in page if ARTIFACT in state.nodes[i].labels]) if type == ARTIFACT else {}
-    meta = {
-        "query": request,
-        "items": page,
-        "bindings": {i: bindings[i] for i in page if i in bindings},
-        "source_refs": list(dict.fromkeys(r for i in page for r in source_refs_of(i, state))),
-        "missing": missing,
-        "coverage": coverage,
-        "continuation": offset + budget if more else None,
-        "diagnostics": _diagnostics(store, compiled, set(ranked)),
-    }
-    if compiled.expanded:
-        meta["coverage"]["expanded"] = compiled.expanded
-    return render(state, page, meta, artifacts)
+    return Found(
+        request=request,
+        ranked=ranked,
+        offset=offset,
+        budget=budget,
+        bindings={i: bindings[i] for i in page if i in bindings},
+        coverage=coverage,
+        missing=missing,
+        diagnostics=_diagnostics(store, compiled, set(ranked)),
+        expanded=dict(compiled.expanded or {}),
+    )
 
 
 # ── 参数 ──────────────────────────────────────────────────────────────
@@ -337,4 +386,4 @@ SEARCH = db_operator(
 )
 
 
-__all__ = ["DEFAULT_BUDGET", "SEARCH", "search"]
+__all__ = ["DEFAULT_BUDGET", "SEARCH", "Found", "find", "search"]
