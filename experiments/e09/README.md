@@ -20,6 +20,7 @@ E08 是 v1 图谱，保留不动；E09 用独立的数据目录与 Neo4j 实例�
     make check        # 自检：材料与入库文档目录、连库、确认不是 v1 库
     make embed        # 建向量索引并补算向量；需要 embedding 服务（见 store/embedding.py）
     make test         # 写入管线与算子的检验（tests/）
+    make workspace DIR=~/e09-runs/<名称>   # 实验目录（仓库外）：在其中运行默认的 pi，经 MCP 使用算子
     make lab          # JupyterLab，工作目录为 notebooks/
 
 ## 写入路径
@@ -38,14 +39,17 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
     uv run python -m e09 -e '{op: Traverse, start: [method_0028], path: [{rel: EVALUATES, dir: in}]}'
     uv run python -m e09 <文档.yml> --source <来源标签>            # graph-doc：Commit 的 dry_run，输出 graph-plan
     uv run python -m e09 <文档.yml> --source <来源标签> --apply    # 提交，输出 graph-result
-    uv run python -m e09 --describe                               # 全部算子作为工具的定义（JSON），不连库
 
 - 由中间件执行的算子（`operators/db/`）：Search、Resolve、Traverse、ReadEvidence 读取，不写库；Commit 提交 graph-doc，
   也可写成 `{op: Commit, doc, source, apply, message, base, dedup}`。
 - Agent 算子（`operators/agent/`）：Extract、Summarize、Generate、Check、Verify、Filter、MatrixConstruct，每次调用写一个
   Artifact，产生一个提交。文档按内容寻址写到 `data/raw/e09-paper-knowledge/artifacts/`（不进 git），登记为 Material，
   可用 ReadEvidence 读取。MatrixConstruct 由 Agent 填写矩阵，中间件只校验表格结构；Rank 已取消。
-- 给 Agent 用的 pi 配置在 `pi-configs/e09/`：一个扩展脚本注册一个算子，定义取自 `--describe`，执行经本入口。
+- 给通用 Agent 用的入口是 MCP 服务 `python -m e09.mcp`（stdio）：每个算子一个工具，工具名即算子名，参数与结果与命令行
+  相同，错误结果标为 `isError`。Agent 算子的 `session` 由服务进程启动时生成，`formed_by` 取环境变量 `E09_FORMED_BY`；
+  `E09_ENABLE_COMMIT=1` 时才列出 Commit。`make workspace DIR=...`（`python -m e09.workspace`）在仓库外生成实验目录，
+  其中只有登记该服务的 `.pi/mcp.json`（`formed_by` 默认取 pi 的默认模型）；在目录中直接运行默认的 `pi`，第一次启动时
+  确认信任该目录，非交互运行加 `--approve`。目录必须在仓库外，否则 pi 会加载仓库的 `AGENTS.md`。
 - 读视图是一份 graph-doc：`nodes` 原样交回 Commit 为 `noop`，`meta` 是 AccessResult。
 - 连接、查重与向量补算都用 `E09_NEO4J_URI` 所指的库。有数据却没有版本记录的库（如旧写入路径建出的库）一律拒绝。
   首次提交时建立版本记录、约束、全文索引与向量索引；Agent 算子通过校验、确实写入前同样建立。提交后补算向量，向量服务不可用时只给
@@ -88,8 +92,9 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 | 位置 | 内容 |
 | --- | --- |
 | `cli` | 命令行入口 `python -m e09`：按 `op` 分发；直接给 graph-doc 时视为 Commit |
+| `mcp`、`workspace` | MCP 入口 `python -m e09.mcp`：算子作为 MCP 工具；实验目录的生成 |
 | `config`、`env_check` | 路径与连接参数；环境自检（`make check`） |
-| `operators/base` | `Operator`（字段对应 pi 的 `ToolDefinition`：name、label、description、parameters、prompt_snippet、prompt_guidelines、execute）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
+| `operators/base` | `Operator`（name、label、description、parameters、prompt_guidelines、execute；作为 MCP 工具时 guidelines 接在 description 后）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
 | `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact |
 | `operators/db/resolve` | Resolve：id → alias → 语义三级解析，Entity 与 Concept |
 | `operators/db/traverse` | Traverse：按端点表校验每一跳，传递性关系的 `depth`，路径绑定；含 `USED` |

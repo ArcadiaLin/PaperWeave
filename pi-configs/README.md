@@ -76,16 +76,7 @@ pi-configs/<版本>/
 - `GUIDE_ZH.md` 是面向 Agent 的数据模型指南，经 `--append-system-prompt` 追加在 `SYSTEM.md` 之后；
   定义以 `docs/designs/graph_model.md` 为准，文件头注明对应版本，数据模型修改后需同步。
 
-## e09
+## e09 不在这里
 
-`e09/` 把 E09 的算子作为工具提供给 Agent，设计见 [operators](../docs/designs/v2/operators.md)。
-
-- `extensions/` 中一个脚本注册一个算子（`search.ts`、`matrix-construct.ts` 等），共用 `extensions/lib/operator.ts`
-  （放在子目录且没有 `index.ts`，不会被当作扩展加载）。工具的定义以 Python 为准：加载时调用一次
-  `python -m e09 --describe`，脚本只补 pi 特有的 `annotations` 与 `defaultActive`。
-- 执行时调用 `python -m e09 <请求> --session <pi 会话 id> --formed-by <provider/model>`；会话与形成者来自 pi 的调用
-  上下文，不是工具参数。错误结果（`status` 为 `rejected`、`blocked` 或 `conflict`）以 `isError` 返回，内容仍交给模型。
-- `Commit` 会改动知识本身，默认注册但不启用；`E09_ENABLE_COMMIT=1` 时启用。`E09_NO_EMBED=1` 时不用向量服务。
-  连哪个库由 `E09_NEO4J_URI` 决定，默认 neo4j-e09（7687）。
-- 启动参数与 `paper-extract/` 相同：不启用内置工具，不加载 `AGENTS.md`、skills 与 prompt 模板；`agent/` 的做法与
-  `no-write-bash/` 相同。`SYSTEM.md` 是初稿，算子的使用指南待补。
+E09 的算子经 MCP 提供给默认配置的 pi，不需要专门的启动配置：`python -m e09.workspace <目录>` 在仓库外生成一个
+只含 `.pi/mcp.json` 的实验目录，在其中直接运行 `pi`，见 `experiments/e09/README.md`。

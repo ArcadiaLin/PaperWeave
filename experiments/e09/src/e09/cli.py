@@ -3,11 +3,11 @@
     python -m e09 <请求.yml | -> [--no-embed] [--session 会话 --formed-by 形成者]
     python -m e09 -e '{op: Traverse, start: [method_0028], path: [{rel: EVALUATES, dir: in}]}'
     python -m e09 <文档.yml> --source <来源标签> [--apply] [--message 说明] [--base 提交 id] [--no-dedup]
-    python -m e09 --describe        # 全部算子作为工具的定义（JSON），不连库；pi 的扩展加载时用
 
 请求的 ``op`` 是任一算子（见 :mod:`e09.operators`），其余键是它的参数。直接给一份 graph-doc（以 ``graph-doc:`` 开头）
 时视为 ``Commit``，``--source`` 等选项给出它的参数。Agent 算子写入时须给出 ``--session`` 与 ``--formed-by``
-（调用环境的信息，不写在请求中）。连接、文档目录与向量服务用 ``E09_NEO4J_URI`` 所指的库、
+（调用环境的信息，不写在请求中）。作为 MCP 工具提供给 Agent 的入口见
+:mod:`e09.mcp`。连接、文档目录与向量服务用 ``E09_NEO4J_URI`` 所指的库、
 ``e09.config.DATA`` 与 ``EMBED_URL``；``--no-embed`` 关闭查询向量，写入后也不补算向量。Agent 算子通过校验、
 确实写入前建立 Artifact 的约束与索引。没有版本记录的旧库一律拒绝。
 
@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -27,7 +26,7 @@ from typing import Any
 
 from graph_doc import GraphDocError, load
 
-from .operators import OPERATORS, Context, call
+from .operators import Context, call
 from .operators.base import rejected
 from .store import Store, UnversionedDatabaseError, check_versioned, open_graph
 
@@ -47,9 +46,6 @@ def request_of(text: str, args: argparse.Namespace) -> dict[str, Any]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.describe:
-        json.dump([op.tool() for op in OPERATORS.values()], sys.stdout, ensure_ascii=False)
-        return 0
     if args.expr is not None:
         text = args.expr
     elif args.request == "-":
@@ -96,7 +92,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("request", nargs="?", help="请求文件路径；- 表示从标准输入读取")
     parser.add_argument("-e", "--expr", help="直接给出请求（YAML 文本）")
     parser.add_argument("--no-embed", action="store_true", help="关闭查询向量，写入后也不补算向量")
-    parser.add_argument("--describe", action="store_true", help="输出全部算子作为工具的定义（JSON），不连库")
     agent = parser.add_argument_group("Agent 算子写入时")
     agent.add_argument("--session", help="调用所在的会话，记入 Artifact 的 session")
     agent.add_argument("--formed-by", help="形成者（模型或人），记入 Artifact 的 formed_by")

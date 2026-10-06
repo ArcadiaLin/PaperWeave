@@ -1,4 +1,4 @@
-"""算子的定义：每个算子是一个 :class:`Operator`，字段对应 pi 的 ``ToolDefinition``，可以直接导出为 Agent 的工具。
+"""算子的定义：每个算子是一个 :class:`Operator`，可以直接作为 Agent 的工具（MCP 入口见 :mod:`e09.mcp`）。
 
     operator.execute(ctx, request) -> 结构化结果；没有执行时抛出 ContractError（Agent 算子为其子类 OperatorError）
     operator.call(ctx, request)    -> Result：把错误转成错误结果，给命令行与工具入口用
@@ -44,7 +44,7 @@ class Context:
 
 @dataclass(frozen=True, slots=True)
 class Result:
-    """对应 pi 的 ``AgentToolResult``：``details`` 是结构化结果，``text`` 是给 LLM 读的 YAML。``status`` 为
+    """一次调用的结果：``details`` 是结构化结果，``text`` 是给 LLM 读的 YAML。``status`` 为
     ``rejected``、``blocked`` 或 ``conflict`` 时是错误结果。"""
 
     details: dict[str, Any]
@@ -70,7 +70,7 @@ CONTEXT_KEYS = ("op", "session", "formed_by")  # 写入请求中不由参数给�
 @dataclass(frozen=True)
 class Operator:
     """一个算子。``family`` 为 ``db``（由中间件执行）或 ``agent``（Agent 给内容，中间件校验后写成 Artifact）；
-    ``prompt_snippet`` 与 ``prompt_guidelines`` 对应 pi 的同名字段，后者就是该算子的使用指南；``validate`` 只有
+    ``prompt_guidelines`` 是该算子的使用指南，作为 MCP 工具时接在说明之后；``validate`` 只有
     Agent 算子有。"""
 
     name: str
@@ -83,20 +83,6 @@ class Operator:
     prompt_snippet: str | None = None
     prompt_guidelines: tuple[str, ...] = ()
     validate: Validate | None = None
-
-    def tool(self) -> dict[str, Any]:
-        """作为 pi 工具注册时的定义（``ToolDefinition`` 中除 ``execute`` 外的字段，键用 pi 的写法）。"""
-        out: dict[str, Any] = {
-            "name": self.name,
-            "label": self.label,
-            "description": self.description,
-            "parameters": self.parameters,
-        }
-        if self.prompt_snippet:
-            out["promptSnippet"] = self.prompt_snippet
-        if self.prompt_guidelines:
-            out["promptGuidelines"] = list(self.prompt_guidelines)
-        return out
 
     def call(self, ctx: Context, request: Mapping[str, Any]) -> Result:
         try:

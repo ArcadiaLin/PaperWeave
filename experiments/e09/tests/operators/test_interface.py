@@ -5,10 +5,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
 from typing import Any
 
 import pytest
@@ -71,17 +67,3 @@ def test_op_in_the_request_must_name_the_operator() -> None:
         "status": "rejected",
         "errors": [{"rule": "format", "at": "op", "msg": "this operator is Search"}],
     }
-
-
-def test_describe_gives_each_operator_as_a_pi_tool() -> None:
-    out = subprocess.run(
-        [sys.executable, "-m", "e09", "--describe"],
-        env={**os.environ, "E09_NEO4J_URI": "bolt://localhost:1"},  # 不连库
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    tools = json.loads(out.stdout)
-    assert [t["name"] for t in tools] == list(OPERATORS)
-    assert all({"name", "label", "description", "parameters"} <= set(t) for t in tools)
-    assert tools == [op.tool() for op in OPERATORS.values()]

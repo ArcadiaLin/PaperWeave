@@ -137,6 +137,19 @@ versioned state access are required evaluation areas. Select concrete workloads
 for them alongside the knowledge-utilization tasks; their benchmark instances
 and quality criteria still require agreement.
 
+**The agent is a general-purpose agent using the middleware through MCP**
+(set by the user on 2026-10-06). The research point is the data-management
+system offered to general agents, not a purpose-built research agent. Experiment
+runs therefore use the default pi configuration — its own system prompt and
+built-in tools, with no replacement prompt, tool whitelist, or pi-specific
+bridge — and connect the operators as an MCP server. What the experiment
+controls is the working directory: each run starts in an empty directory
+outside the repository whose only content is the MCP registration (pi loads
+`AGENTS.md` and similar context files from the working directory and its
+parents). How to operate each tool belongs in its MCP tool description. The
+general agent keeps its ordinary file and shell access; evaluation audits
+reads of source materials that bypass the middleware rather than blocking them.
+
 Evaluation principles:
 
 - **Evaluate middleware support first.** Compare supported query and update

@@ -78,7 +78,7 @@ AccessResult = {query, items, bindings, source_refs, missing, coverage, continua
 - **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。所有算子没有完成时的返回同形：`{status, errors}`，`status` 为 `rejected`（请求没有被执行，什么也没有写入）、`blocked`（`Commit` 的阻塞项）或 `conflict`（提交时与并发写入冲突），`errors` 的每一项为 `{rule, at, msg}`，`at` 指向出错的参数或节点，`Commit` 的阻塞项另带 `candidates` 与 `fix`。请求的顶层形状不对（未知参数、缺少必填参数）记为 `format`，参数的取值不对记为 `schema`。
 - **数据缺失**（引用不在库中、关系无记录）返回空集合与覆盖信息，不当作错误。
 - **执行失败**（向量服务不可用、索引缺失）记入 `coverage` 的通道状态；因失败而没有结果时不当作空结果。
-- **会话**：Agent 算子的会话标识 `session` 与形成者 `formed_by` 记在 Artifact 上，用于按会话追溯产物。二者是调用环境的信息，由调用方（工具入口或命令行的 `--session`、`--formed-by`）给出，不是算子参数；算子作为工具时，参数中也没有 `op`，工具名就是算子名。
+- **会话**：Agent 算子的会话标识 `session` 与形成者 `formed_by` 记在 Artifact 上，用于按会话追溯产物。二者是调用环境的信息，由调用方给出（MCP 服务：进程启动时生成的会话与环境变量 `E09_FORMED_BY`；命令行：`--session`、`--formed-by`），不是算子参数；算子作为工具时，参数中也没有 `op`，工具名就是算子名。
 
 ## 3. 中间件算子
 
@@ -467,9 +467,10 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 
 ## 9. E09 实现对照
 
-模块都在 `experiments/e09/src/e09/` 下。每个算子一个文件，定义一个 `Operator`（`operators/base.py`），字段对应 pi 的
-`ToolDefinition`（名称、说明、参数的 JSON Schema、使用指南与执行），按名称登记在 `operators.OPERATORS` 中。全部算子
-经同一个命令行入口 `python -m e09` 调用，请求的 `op` 为算子名；直接给 graph-doc 时视为 `Commit`。共用的支持放在与
+模块都在 `experiments/e09/src/e09/` 下。每个算子一个文件，定义一个 `Operator`（`operators/base.py`：名称、说明、参数的 JSON Schema、使用指南与执行），按名称登记在
+`operators.OPERATORS` 中。通用 Agent 经 MCP 服务 `python -m e09.mcp` 使用算子：每个算子一个工具，`inputSchema` 就是
+参数的 JSON Schema，使用指南接在说明之后；`Commit` 只在 `E09_ENABLE_COMMIT=1` 时列出。命令行入口 `python -m e09`
+的请求以 `op` 为算子名；直接给 graph-doc 时视为 `Commit`。两个入口经同一个 `Operator.call`，结果相同。共用的支持放在与
 `operators/` 同级的包中，依赖方向为 `operators → commit、artifact、query → store、model`。
 
 | 算子 | 模块 | 状态 |

@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.28,<1",   # embedding 服务（vLLM 的 /v1/embeddings），Resolve 的语义阶段
     "graph-vc",         # 写入路径：变更集与版本记录
     "graph-doc",        # 写入路径：graph-doc 解析与求差
+    "mcp>=1.20,<2",     # 把算子作为 MCP 工具提供给通用 Agent（e09.mcp）
 ]
 
 [tool.uv.sources]
@@ -33,6 +34,8 @@ include = [
     "src/e09/__init__.py",
     "src/e09/__main__.py",
     "src/e09/cli.py",
+    "src/e09/mcp.py",
+    "src/e09/workspace.py",
     "src/e09/yamlfmt.py",
     "src/e09/operators/**/*.py",
     "src/e09/commit/**/*.py",

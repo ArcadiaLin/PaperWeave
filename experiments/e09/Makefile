@@ -7,6 +7,7 @@
 #   make embed       建向量索引并补算向量（Resolve 的语义阶段用）；需要 embedding 服务，只补算文本变过的对象
 #   make test        写入管线与算子的检验（tests/；算子只在设置 GRAPH_VC_TEST_NEO4J_URI 时于测试实例上运行）
 #   make lab         在本目录启动 JupyterLab
+#   make workspace DIR=~/e09-runs/<名称>  在仓库外生成实验目录（.pi/mcp.json），在其中运行默认的 pi
 #
 # 写入路径已改用 packages/graph-vc 与 packages/graph-doc：python -m e09（见 README）；重建目标待 graph-doc 数据就绪后加入。
 # 旧写入路径（表单编译与 Commit）见 tag e09-legacy-write：现有 neo4j-e09 库与 I3 实验由它建出。
@@ -18,7 +19,7 @@ DOCKER ?= docker
 RUN = $(UV) run
 COMPOSE = $(DOCKER) compose -f ../../infra/neo4j-e09/docker-compose.yml
 
-.PHONY: setup neo4j-up neo4j-down check embed test lab clean
+.PHONY: setup neo4j-up neo4j-down check embed test lab workspace clean
 
 setup:
 	$(MAKE) -C ../.. setup
@@ -40,6 +41,10 @@ test:
 
 lab:
 	mkdir -p notebooks && $(RUN) jupyter lab --notebook-dir=notebooks
+
+workspace:
+	@test -n "$(DIR)" || (echo 'usage: make workspace DIR=~/e09-runs/<name> [ARGS=--enable-commit]' && exit 1)
+	$(RUN) python -m e09.workspace $(DIR) $(ARGS)
 
 clean:
 	rm -rf notebooks/_scratch
