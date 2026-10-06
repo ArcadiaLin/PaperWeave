@@ -31,7 +31,7 @@ an ongoing effort and selectively reusing them across lines of inquiry.
 
 ## Figure 1：从研究行为看管理需求
 
-放在 intro 部分的场景图，让读者看到（a）研究行为在时间线上展开，（b）产物沉淀成有结构的共享积累，（c）研究线路从中选择、分叉、带历史演化，并且四个 challenge 都能指到图上某个具体元素。图中论文 A、B、C（后期加入 D）是研究过程中使用的材料，由 Agent 阅读并转化为产物。
+放在 intro 部分的场景图，让读者看到（a）研究行为在时间线上展开，（b）产物沉淀成有结构的共享积累，（c）研究线路从中选择、分叉、带历史演化，并且四个 challenge 都能指到图上某个具体元素。图中论文 A、B、C（后期加入 D）是研究过程中使用的材料，由 Agent 阅读并转化为产物；Band 1 的每类行为都由我们的算子覆盖，因此这张图同时是系统能力的走查。
 
 ```text
                      time ──────────────────────────────────────────────▶                           
@@ -73,6 +73,8 @@ Band 3（项目视图与历史）：一条研究线路（line of inquiry）的�
 。视图状态形成提交序列（v1、v2、…），中段分出两条路线分支各自前进；一个 revisit 关系从后期状态指 
 回早期报告及该报告当时所用的知识，表示对历史状态的追溯。  
 
+Band 1 的行为与算子一一对应：检索与定位已有积累（search／resolve／traverse）、阅读材料与证据（read_evidence）、抽取记录（extract）、跨论文比较（matrix_construct）、筛选子集（filter）、复检适用性（verify／check）、形成方案与报告（generate／summarize）；每次调用经统一写入（commit）把产物落入 Band 2，并把状态变化记入 Band 3 的提交序列。由此 Figure 1 同时说明系统如何支持这些行为，而不只是描述需求。
+
 四个 challenge 在图中的落点：C1 对应共享积累中跨论文共享的对象节点；C2 对应记录上的条件、证据链接与产物依赖关系；C3 对应视图的选取关系与视图外的 required context；C4 对应提交序列、分支与 revisit 关系。
 
 ## 从案例到问题与 Challenges
@@ -106,8 +108,9 @@ C4. Track changes and independent research states.
 面向外部通用 Agent，管理论文知识、使用产物和版本化项目视图。
 
 ```text
-We propose a knowledge-graph-based middleware combining semantic knowledge
-and artifacts, composable operations, and versioned project views.
+We propose a knowledge-graph-based middleware combining a semantic knowledge
+and artifact model, operator contracts for agent-composed work, and versioned
+project views.
 ```
 
 三项机制回应四个挑战；最后留实现与评测的位置：
@@ -116,8 +119,9 @@ and artifacts, composable operations, and versioned project views.
 1. Semantic Knowledge and Artifact Model (C1)
    Shared identities, source-specific records, and artifacts linked by provenance.
 
-2. Composable Operations and Persistent Knowledge Use (C2)
-   Access and analysis contracts with reusable outputs and declared dependencies.
+2. Operator Contracts for Agent-Composed Work (C2)
+   Declared input/output contracts, validation, and persistent artifacts make
+   agent-composed work inspectable, reusable, and further composable.
 
 3. Versioned Project Knowledge Management (C3–C4)
    Selective inheritance from a fixed baseline, complete change records,
@@ -127,21 +131,24 @@ and artifacts, composable operations, and versioned project views.
    Correctness, knowledge quality, reuse, and total construction/use/maintenance costs.
 ```
 
-责任边界只交代一句：Agent 解释材料、判断语义；中间件校验结构与引用，执行操作、保存产物和状态变化。
+责任边界是立论核心，值得单独说清：组合的规划在 Agent 侧——Agent 把意图翻译成算子计划，翻译是否忠实单独评估；中间件校验计划结构与引用、执行操作、持久化产物并记录谱系与状态变化。我们管理 Agent 的组合，而不是替 Agent 组合。
 
-Figure 2 画整体架构：语义模型、算子与 Artifact、项目视图与统一提交如何连接。评测结果出来后，在 intro 末尾补主要发现。
+随后以 Figure 2 介绍整体架构：Agent 经 agent-facing 接口（MCP）调用算子契约，产物落入共享知识积累，统一提交驱动项目视图与版本历史——语义模型、算子契约与 Artifact、版本化视图三部分如何连接，并回看 Figure 1 的行为如何沿这条链路落地。评测结果出来后，在 intro 末尾补主要发现。
 
 # 后续章节大纲
 
-2. **Workloads and Problem.** 从选定研究任务导出访问、组合、项目建立与更新需求；明确输入输出和责任边界。
-3. **System Overview.** Figure 2：共享知识、项目视图、操作、产物与版本记录的整体关系。
-4. **Semantic Data Model.** Entity / Concept / Content / Artifact；身份、粒度、材料引用及来源谱系。
-5. **Operators and Artifact Persistence.** 访问与 Agent 算子、输入输出契约、组合、产物保存与继续使用。
-6. **Versioned Project Knowledge Views.** 基线与选择、上下文与摘要、完整提交、分支、历史访问及整合；区分产物输入与提交历史。
-7. **Implementation.** 属性图与材料存储、操作到后端的映射、统一写入与版本实现。
-8. **Evaluation.** 先检验中间件正确性，再看知识／产物质量与跨任务、跨项目使用；对照、规模和总成本。任务与协议待定。
-9. **Related Work.** 学术知识管理、Agent Memory、provenance 与版本化数据管理；版本部分引用 `2026-Git4Data`、`2013-GraphSnapshot`。
-10. **Conclusion.** 实验完成后收束主要发现、适用范围与局限。
+组织方式借鉴 AgenticScholar：一套工作负载分类作为全文中枢，复用三处——related work 能力矩阵的行、算子契约设计的需求来源、评测小节的组织轴；挑战编号、机制编号、评测小节一一对应；Figure 1 的场景在评测中被完整重演。Related work 前置到 intro 之后，直接叙述我们与各路线的区别，而不是文末罗列。
+
+2. **Related Work and Positioning.** 开头先用一段简述四类工作负载——知识访问、组合与产物生成、项目视图建立与维护、历史访问与演化——作为能力矩阵的行（完整规约在 §3 展开）。随后按四条路线直接叙述区别：学术知识图谱与文献系统（以文档为中心，不管理使用产物）、Agent Memory（记录交互历史，不管知识结构与研究状态）、语义算子系统（AgenticScholar、LOTUS 等——LLM 内化于算子，我们的语义工作外置、契约内化）、provenance 与版本化数据管理（引用 `2026-Git4Data`、`2013-GraphSnapshot`——管数据版本，我们管知识状态版本）。能力矩阵区分原生支持／组合支持／需外部推理。
+3. **Workloads and Problem.** 把 §2 引入的四类工作负载展开为可评测规约：各自给出具体输入、所需输出、数据状态与操作序列。明确责任边界：Agent 解释材料、判断语义、组合计划；中间件校验、执行、持久化。
+4. **System Overview.** Figure 2：共享知识、产物、项目视图与版本记录的整体关系；用 Figure 1 中一个 session 的端到端走查串起各部件。
+5. **Semantic Data Model.** Entity / Concept / Content / Artifact；身份与粒度规则、材料引用、来源与派生谱系；约束与校验规则（回应 C1）。
+6. **Operator Contracts and Artifact Persistence.** 访问算子与 Agent 算子的输入输出契约；组合的规划在 Agent 侧，中间件校验计划、保存产物与声明依赖，使 Agent 的组合可校验、可复用、可继续组合（回应 C2）。
+7. **Versioned Project Knowledge Views.** 基线与选择、必要上下文、完整提交、分支、历史访问及整合；区分产物输入谱系与提交祖先（回应 C3–C4）。
+8. **Implementation.** 属性图与材料存储、算子契约到 Cypher／后端的映射、统一写入与版本实现。
+9. **Evaluation.** 小节与机制一一对应：模型正确性与约束执行（§5）、契约执行与产物质量（§6）、视图构建与选择正确性（§7 前半）、历史访问与分支演化（§7 后半）；加端到端案例（完整重演 Figure 1 场景）、设计消融（去掉契约校验／版本记录的代价）、构建／复用／维护总成本；baseline 含裸 Neo4j+Cypher、RAG、Agent＋文件系统。任务与协议待定。
+10. **Lessons Learned.** 责任边界的划分、契约粒度的取舍、版本记录的开销等实务经验。
+11. **Conclusion.** 实验完成后收束主要发现、适用范围与局限。
 
 # 备忘
 
