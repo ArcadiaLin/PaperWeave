@@ -27,7 +27,7 @@ from ...model.schema import ARTIFACT, DERIVED_FIELDS, FAMILY, TRAVERSABLE
 from ...query.conditions import compile_where
 from ...query.view import render, source_refs_of
 from ...store.store import ContractError, Store
-from ..base import STRING, db_operator, one_or_many, schema
+from ..base import STRINGS, db_operator, schema
 
 TRANSITIVE = frozenset({"BROADER", "PART_OF", "HAS_PART", "DERIVED_FROM"})
 NODE_KINDS = frozenset(FAMILY) | {ARTIFACT}
@@ -293,15 +293,9 @@ def _steps(store: Store, ids: set[str], hop: _Hop) -> dict[str, list[tuple[str, 
 
 TRAVERSE = db_operator(
     name="Traverse",
-    label="Traverse",
-    description=(
-        "From confirmed references, follow declared relations hop by hop and keep the paths. "
-        "Each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}; at most 3 hops. "
-        "USED in-edges lead to the artifacts that used an object."
-    ),
     parameters=schema(
         {
-            "start": one_or_many(STRING, "An id or a list of ids"),
+            "start": STRINGS,
             "path": {"type": "array", "items": {"type": "object"}},
             "budget": {"type": "integer"},
             "continuation": {"type": "integer"},

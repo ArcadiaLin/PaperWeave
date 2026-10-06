@@ -10,7 +10,7 @@ from typing import Any
 
 from ...query.resolve import resolve
 from ...store.store import ContractError, Store
-from ..base import STRING, TERMS, db_operator, schema
+from ..base import TERMS, db_operator, schema
 
 
 def run(
@@ -26,17 +26,12 @@ def run(
 
 RESOLVE = db_operator(
     name="Resolve",
-    label="Resolve",
-    description=(
-        "Resolve a mention, identifier or text to stored Entity or Concept references of one kind: exact identifier, "
-        "exact name key, then semantic candidates. Semantic candidates are not identities; confirm them with Filter."
-    ),
     parameters=schema(
         {
-            "query": {"anyOf": [STRING, TERMS], "description": "A mention, or {identifier?, mention?, text?}"},
+            "query": TERMS,
             "kind": {"type": "string"},
             "scope": {"type": "string"},
-            "mode": {"enum": ["read", "write"]},
+            "mode": {"type": "string", "enum": ["read", "write"]},
         },
         ["query", "kind"],
     ),

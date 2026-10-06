@@ -73,20 +73,15 @@ def filter_(params: Mapping[str, Any], payload: Mapping[str, Any], problems: Pro
 
 FILTER = agent_operator(
     name="Filter",
-    label="Filter",
-    description=(
-        "Judge item by item whether each satisfies one condition: candidate identity, applicability, relevance. "
-        "Give exactly one T/F/U judgment per item; U is kept, not dropped."
-    ),
     params=schema(
         {
-            "items": {"type": "object", "description": "item key -> reference"},
+            "items": {"type": "object"},
             "condition": schema({"id": {"type": "string"}, "text": {"type": "string"}}, ["id", "text"]),
         },
         ["items", "condition"],
     ),
     payload=schema(
-        {"judgments": {"type": "array", "items": {**JUDGMENT, "description": "{key, value, basis, reason}"}}},
+        {"judgments": {"type": "array", "items": {**JUDGMENT}}},
         ["judgments"],
     ),
     validate=filter_,

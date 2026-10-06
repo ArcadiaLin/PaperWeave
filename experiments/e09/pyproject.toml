@@ -34,7 +34,7 @@ include = [
     "src/e09/__init__.py",
     "src/e09/__main__.py",
     "src/e09/cli.py",
-    "src/e09/mcp.py",
+    "src/e09/mcp/**/*.py",
     "src/e09/workspace.py",
     "src/e09/yamlfmt.py",
     "src/e09/operators/**/*.py",

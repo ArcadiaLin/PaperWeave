@@ -13,7 +13,8 @@
     <数据块>
     ```
 
-文档按内容寻址存放在材料根目录下的 ``artifacts/<sha256 前 12 位>.md``，写入后不再改动；头部不含 Artifact 的 id，
+文档存放在材料根目录下的 ``artifacts/<标题>.md``（:func:`file_name`），标题重复时依次加 `` (1)``、`` (2)``；写入后
+不再改动。Material 的 id 由内容哈希给出（``material_<sha256 前 12 位>``），与文件名无关；头部不含 Artifact 的 id，
 所以内容相同的文档只存一份。
 """
 
@@ -43,14 +44,21 @@ class Document:
         return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
 
     @property
-    def path(self) -> str:
-        """相对于材料根目录的路径。"""
-        return f"{DIRECTORY}/{self.sha256[:12]}.md"
-
-    @property
     def material_id(self) -> str:
         """与论文材料相同的 id 规则（e09.commit.translate）。"""
         return f"material_{self.sha256[:12]}"
+
+
+_UNSAFE = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')  # 控制字符与 Linux、Windows 文件名中不能用的字符
+NAME_BYTES = 200  # 文件名（不含序号与扩展名）的最大字节数；文件系统的上限是 255
+
+
+def file_name(title: str, n: int = 0) -> str:
+    """标题对应的文件名：不能用的字符换成空格，连续空白并成一个，去掉首尾的空白与点，按 UTF-8 截到
+    :data:`NAME_BYTES` 字节；``n`` 大于 0 时加 `` (n)``。"""
+    stem = " ".join(_UNSAFE.sub(" ", title).split()).strip(" .")  # 不以点开头：不成为隐藏文件
+    stem = stem.encode("utf-8")[:NAME_BYTES].decode("utf-8", "ignore").rstrip(" .") or "artifact"
+    return f"{stem} ({n}).md" if n else f"{stem}.md"
 
 
 def compose(title: str, nodes_used: list[str], abs_: str, body: str, data: Any = None) -> Document:
@@ -90,4 +98,4 @@ def record_keys(op: str, data: Any) -> list[str]:
     return []
 
 
-__all__ = ["DIRECTORY", "Document", "compose", "data_of", "header_of", "record_keys"]
+__all__ = ["DIRECTORY", "NAME_BYTES", "Document", "compose", "data_of", "file_name", "header_of", "record_keys"]

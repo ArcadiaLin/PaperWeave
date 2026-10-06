@@ -26,8 +26,8 @@ JUDGMENT = {
     "type": "object",
     "properties": {
         "value": {"enum": list(VALUES)},
-        "basis": one_or_many(STRING, "A reference or a list of references; required for T and F."),
-        "reason": {"type": "string", "description": "Required for U."},
+        "basis": one_or_many(STRING),
+        "reason": {"type": "string"},
     },
 }
 

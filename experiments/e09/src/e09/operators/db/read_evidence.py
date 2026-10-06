@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...model.refs import normalize_ref
 from ...model.schema import LOCATOR
 from ...query.materials import load_lines, materials
 from ...store.store import ContractError, Store
-from ..base import STRING, db_operator, one_or_many, schema
+from ..base import STRINGS, db_operator, schema
 
 VERSION = "v0.1"
 
@@ -29,7 +30,7 @@ def read_evidence(store: Store, source_refs: list[str] | str) -> dict[str, Any]:
     if not isinstance(refs, list) or not refs or not all(isinstance(r, str) for r in refs):
         raise ContractError([{"at": "source_refs", "msg": "a non-empty list of source references"}])
     refs = list(dict.fromkeys(refs))
-    found = materials(store, {r.partition("::")[0] for r in refs})
+    found = materials(store, {normalize_ref(r).partition("::")[0] for r in refs})
     texts: dict[str, list[str] | None] = {}
     items = [_read(store, ref, found, texts) for ref in refs]
     states = [item["state"] for item in items]
@@ -45,7 +46,7 @@ def read_evidence(store: Store, source_refs: list[str] | str) -> dict[str, Any]:
 def _read(
     store: Store, ref: str, found: dict[str, dict[str, Any]], texts: dict[str, list[str] | None]
 ) -> dict[str, Any]:
-    head, sep, locator = ref.partition("::")
+    head, sep, locator = normalize_ref(ref).partition("::")
     match = LOCATOR.fullmatch(locator) if sep else None
     if match is None:
         return {"ref": ref, "state": "missing", "reason": "not <material>::<section>::<start>:<end>"}
@@ -77,13 +78,8 @@ def _read(
 
 READ_EVIDENCE = db_operator(
     name="ReadEvidence",
-    label="Read evidence",
-    description=(
-        "Read the lines a source reference points to (<material>::<section>::<start>:<end>), from paper materials "
-        "or artifact documents. Each item is available, missing or error; available text carries line numbers."
-    ),
     parameters=schema(
-        {"source_refs": one_or_many(STRING, "A source reference or a list of them")},
+        {"source_refs": STRINGS},
         ["source_refs"],
     ),
     run=read_evidence,

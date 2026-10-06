@@ -143,10 +143,10 @@ system offered to general agents, not a purpose-built research agent. Experiment
 runs therefore use the default pi configuration — its own system prompt and
 built-in tools, with no replacement prompt, tool whitelist, or pi-specific
 bridge — and connect the operators as an MCP server. What the experiment
-controls is the working directory: each run starts in an empty directory
-outside the repository whose only content is the MCP registration (pi loads
-`AGENTS.md` and similar context files from the working directory and its
-parents). How to operate each tool belongs in its MCP tool description. The
+controls is the working directory: each run starts in a directory outside the repository that
+holds only the MCP registration, pi's session settings and sessions, and a
+launcher script (pi loads `AGENTS.md` and similar context files from the
+working directory and its parents). How to operate each tool belongs in its MCP tool description. The
 general agent keeps its ordinary file and shell access; evaluation audits
 reads of source materials that bypass the middleware rather than blocking them.
 

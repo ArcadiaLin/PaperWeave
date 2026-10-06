@@ -53,12 +53,7 @@ def verify(params: Mapping[str, Any], payload: Mapping[str, Any], problems: Prob
 
 VERIFY = agent_operator(
     name="Verify",
-    label="Verify",
-    description=(
-        "Judge whether a claim holds under the given evidence (T supported, F refuted, U insufficient) and state "
-        "the conditions under which it holds. Finding no support is U, not F."
-    ),
-    params=schema({"claim": {"anyOf": [STRING, TEXT], "description": "A reference or {text}"}}, ["claim"]),
+    params=schema({"claim": {"anyOf": [STRING, TEXT]}}, ["claim"]),
     payload=schema(
         {**JUDGMENT["properties"], "conditions": {"type": "string"}},
         ["value"],

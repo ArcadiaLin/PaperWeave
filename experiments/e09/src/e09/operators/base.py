@@ -1,7 +1,8 @@
 """算子的定义：每个算子是一个 :class:`Operator`，可以直接作为 Agent 的工具（MCP 入口见 :mod:`e09.mcp`）。
 
     operator.execute(ctx, request) -> 结构化结果；没有执行时抛出 ContractError（Agent 算子为其子类 OperatorError）
-    operator.call(ctx, request)    -> Result：把错误转成错误结果，给命令行与工具入口用
+    operator.call(ctx, request)    -> Result：先兜底修复参数（:mod:`.repair`），再执行；把错误转成错误结果，给命令行与
+                                      工具入口用
 
 **参数。** ``parameters``（JSON Schema）只含算子自己的参数，不含 ``op``：作为工具注册时工具名就是算子名。请求中
 可以带 ``op``（命令行按它分发），须与算子名相同。会话、形成者与形成时间是调用环境的信息，由 :class:`Context`
@@ -17,12 +18,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from ..artifact.write import REQUEST_KEYS, REQUIRED, Validate, write_artifact
 from ..store.store import ContractError, Store
 from ..yamlfmt import dump
+from .repair import repair
 
 Family = Literal["db", "agent"]
 FAILED = frozenset({"rejected", "blocked", "conflict"})  # 没有完成的状态
@@ -45,9 +47,11 @@ class Context:
 @dataclass(frozen=True, slots=True)
 class Result:
     """一次调用的结果：``details`` 是结构化结果，``text`` 是给 LLM 读的 YAML。``status`` 为
-    ``rejected``、``blocked`` 或 ``conflict`` 时是错误结果。"""
+    ``rejected``、``blocked`` 或 ``conflict`` 时是错误结果。``repairs`` 是执行前对参数的兜底修复，只给入口记日志，
+    不在 ``text`` 中。"""
 
     details: dict[str, Any]
+    repairs: tuple[str, ...] = ()
 
     @property
     def is_error(self) -> bool:
@@ -70,25 +74,24 @@ CONTEXT_KEYS = ("op", "session", "formed_by")  # 写入请求中不由参数给�
 @dataclass(frozen=True)
 class Operator:
     """一个算子。``family`` 为 ``db``（由中间件执行）或 ``agent``（Agent 给内容，中间件校验后写成 Artifact）；
-    ``prompt_guidelines`` 是该算子的使用指南，作为 MCP 工具时接在说明之后；``validate`` 只有
-    Agent 算子有。"""
+    ``validate`` 只有 Agent 算子有。给模型看的文字（标题、说明、参数说明）不在这里，见 :mod:`e09.mcp`。"""
 
     name: str
-    label: str
-    description: str
     family: Family
     parameters: dict[str, Any]
     execute: Execute
     writes: bool = False
-    prompt_snippet: str | None = None
-    prompt_guidelines: tuple[str, ...] = ()
     validate: Validate | None = None
 
     def call(self, ctx: Context, request: Mapping[str, Any]) -> Result:
+        repairs: list[str] = []
+        if isinstance(request, Mapping):
+            request, repairs = repair(self.parameters, request)
         try:
-            return Result(self.execute(ctx, request))
+            result = Result(self.execute(ctx, request))
         except ContractError as exc:
-            return rejected(exc.errors, status=exc.status)
+            result = rejected(exc.errors, status=exc.status)
+        return replace(result, repairs=tuple(repairs))
 
 
 def schema(properties: Mapping[str, Any], required: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
@@ -99,12 +102,13 @@ def schema(properties: Mapping[str, Any], required: list[str] | tuple[str, ...] 
     return out
 
 
-def one_or_many(item: Mapping[str, Any], description: str) -> dict[str, Any]:
+def one_or_many(item: Mapping[str, Any]) -> dict[str, Any]:
     """一个值或一组值。"""
-    return {"anyOf": [dict(item), {"type": "array", "items": dict(item)}], "description": description}
+    return {"anyOf": [dict(item), {"type": "array", "items": dict(item)}]}
 
 
 STRING = {"type": "string"}
+STRINGS = {"type": "array", "items": STRING}
 TEXT = schema({"text": STRING}, ["text"])  # 不是库中对象时直接写出的文字
 TERMS = schema({"identifier": STRING, "mention": STRING, "text": STRING})  # 查找用的标识符、提及与描述
 
@@ -131,31 +135,23 @@ def params_of(op: str, parameters: Mapping[str, Any], request: Mapping[str, Any]
 def db_operator(
     *,
     name: str,
-    label: str,
-    description: str,
     parameters: dict[str, Any],
     run: Callable[..., dict[str, Any]],
-    prompt_snippet: str | None = None,
-    prompt_guidelines: tuple[str, ...] = (),
 ) -> Operator:
     """只读的中间件算子：核对参数后调用 ``run(store, **params)``。"""
 
     def execute(ctx: Context, request: Mapping[str, Any]) -> dict[str, Any]:
         return run(ctx.store, **params_of(name, parameters, request))
 
-    return Operator(name, label, description, "db", parameters, execute, False, prompt_snippet, prompt_guidelines)
+    return Operator(name, "db", parameters, execute)
 
 
 def agent_operator(
     *,
     name: str,
-    label: str,
-    description: str,
     params: dict[str, Any],
     payload: dict[str, Any],
     validate: Validate,
-    prompt_snippet: str | None = None,
-    prompt_guidelines: tuple[str, ...] = (),
 ) -> Operator:
     """Agent 算子：``validate`` 检查该算子的 ``params`` 与 ``payload``，其余（共同校验、文档、提交）都经
     :func:`e09.artifact.write.write_artifact`。``params`` 与 ``payload`` 是这两个键的 JSON Schema。
@@ -163,13 +159,9 @@ def agent_operator(
     写入的请求是参数加上 ``op``（算子名）与 ``Context`` 中的 ``session``、``formed_by``；二者缺一时拒绝。"""
     parameters = schema(
         {
-            "title": {"type": "string", "description": "Optional; generated from op and params when omitted."},
-            "abs": {"type": "string", "description": "A few sentences on what this artifact is; used for search."},
-            "inputs": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Object, source, artifact or record references actually used.",
-            },
+            "title": STRING,
+            "abs": STRING,
+            "inputs": {"type": "array", "items": STRING},
             "params": params,
             "payload": payload,
         },
@@ -185,14 +177,13 @@ def agent_operator(
         full = {"op": name, **params, **context}
         return write_artifact(ctx.store, full, {name: validate}, at=ctx.at, text=ctx.text, sync=ctx.sync)
 
-    return Operator(
-        name, label, description, "agent", parameters, execute, True, prompt_snippet, prompt_guidelines, validate
-    )
+    return Operator(name, "agent", parameters, execute, writes=True, validate=validate)
 
 
 __all__ = [
     "CONTEXT_KEYS",
     "STRING",
+    "STRINGS",
     "TERMS",
     "TEXT",
     "Context",

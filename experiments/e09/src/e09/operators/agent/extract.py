@@ -22,7 +22,7 @@ from ._common import (
     type_name,
 )
 
-_FIELD_NAME = re.compile(r"[a-z][a-z0-9_]*")
+_FIELD_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
 def extract(params: Mapping[str, Any], payload: Mapping[str, Any], problems: Problems) -> Output:
@@ -115,7 +115,11 @@ def _fields(value: Any, problems: Problems) -> dict[str, Any]:
     for name, type_ in value.items():
         at = f"params.schema.fields.{name}"
         if not isinstance(name, str) or not _FIELD_NAME.fullmatch(name) or name in ("key", "source"):
-            problems.add("schema", at, "field names are lower_snake_case; key and source are reserved")
+            problems.add(
+                "schema",
+                at,
+                "field names are letters, digits and _, starting with a letter; key and source are reserved",
+            )
             continue
         parsed = parse_type(type_)
         if parsed is None:
@@ -140,18 +144,12 @@ def _slug(value: str) -> str:
 
 EXTRACT = agent_operator(
     name="Extract",
-    label="Extract",
-    description=(
-        "After reading the source, record the specific values needed (result numbers, settings, release addresses) "
-        "as typed records. Each row names its source reference; record keys come from the key fields."
-    ),
     params=schema(
         {
             "schema": schema(
                 {
                     "fields": {
                         "type": "object",
-                        "description": "name -> string | number | integer | boolean | ref | enum[a, b]",
                     },
                     "required": {"type": "array", "items": {"type": "string"}},
                     "key": {"type": "array", "items": {"type": "string"}},
@@ -163,8 +161,8 @@ EXTRACT = agent_operator(
     ),
     payload=schema(
         {
-            "rows": {"type": "array", "items": {"type": "object", "description": "<fields> and source"}},
-            "note": {"type": "string", "description": "Required when rows is empty: what was read and why nothing."},
+            "rows": {"type": "array", "items": {"type": "object"}},
+            "note": {"type": "string"},
         },
         ["rows"],
     ),

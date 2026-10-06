@@ -25,7 +25,7 @@ from ...query.fusion import POOL, RRF_K, fuse, tokens
 from ...query.view import render, source_refs_of
 from ...store.embedding import EMBED_MODEL, VECTOR_INDEXES
 from ...store.store import ContractError, Store
-from ..base import STRING, TERMS, db_operator, one_or_many, schema
+from ..base import STRINGS, TERMS, db_operator, schema
 
 TYPES = ("Entity", "Concept", "Content", ARTIFACT)
 QUERY_FIELDS = {
@@ -318,26 +318,16 @@ def _diagnostics(store: Store, compiled: Compiled, matched: set[str]) -> dict[st
 
 SEARCH = db_operator(
     name="Search",
-    label="Search",
-    description=(
-        "Find objects of one type (Entity, Concept, Content or Artifact) by query and structural conditions. "
-        "Returns a read view: nodes with all their model edges, and meta with items, bindings and coverage. "
-        "Artifacts appear only with type=Artifact."
-    ),
     parameters=schema(
         {
-            "type": {"enum": list(TYPES)},
-            "query": {"anyOf": [STRING, TERMS], "description": "Text, or {identifier?, mention?, text?}"},
-            "kinds": one_or_many(STRING, "A kind or a list of kinds; not for Artifact"),
+            "type": {"type": "string", "enum": list(TYPES)},
+            "query": TERMS,
+            "kinds": STRINGS,
             "where": {
                 "type": "object",
-                "description": "Structural conditions; for Artifact: op, used, formed_by, session",
             },
             "expand": {"type": "object"},
-            "scope": {
-                "anyOf": [{"const": "global"}, {"type": "array", "items": STRING}],
-                "description": "global, or paper ids (Content only)",
-            },
+            "scope": STRINGS,
             "budget": {"type": "integer"},
             "continuation": {"type": "integer"},
         },

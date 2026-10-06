@@ -2,8 +2,11 @@
 
     python -m e09.workspace <目录> [--formed-by provider/model] [--neo4j-uri bolt://...] [--enable-commit] [--no-embed]
 
-目录里只有 ``.pi/mcp.json``：登记 ``e09`` 服务（``python -m e09.mcp``，工具直接列给模型）。pi 会从工作目录及其
-上层目录加载 ``AGENTS.md`` 等上下文文件，所以目录必须在仓库之外；目录已存在且不空时拒绝。``formed_by`` 默认取
+目录里只有三样：``.pi/mcp.json`` 登记 ``PaperWeave`` 服务（``python -m e09.mcp``，工具直接列给模型；服务的
+调用日志写到 ``.pi/paperweave.log``）；``.pi/settings.json`` 把 pi 的会话存到 ``.pi/sessions/``，一次实验的记录都在
+目录里；``pi.sh`` 在目录中启动 pi
+（``./pi.sh`` 进入交互界面，``./pi.sh -r`` 选择会话继续）。pi 会从工作目录及其上层目录加载 ``AGENTS.md`` 等上下文
+文件，所以目录必须在仓库之外；目录已存在且不空时拒绝。``formed_by`` 默认取
 pi 的默认模型（``$PI_CODING_AGENT_DIR`` 或 ``~/.pi/agent`` 下 ``settings.json`` 的 ``defaultProvider/defaultModel``）。
 项目级的 ``.pi/mcp.json`` 只在信任该目录后加载：第一次在目录中启动 pi 时确认信任，非交互模式用 ``--approve``。
 """
@@ -20,7 +23,11 @@ from typing import Any
 
 from .config import NEO4J_URI, REPO
 
-SERVER = "e09"
+SERVER = "PaperWeave"
+LAUNCHER = """#!/bin/sh
+# Start pi in this directory; sessions are kept in .pi/sessions. Resume: ./pi.sh -r
+cd "$(dirname "$0")" && exec pi "$@"
+"""
 
 
 def default_formed_by() -> str | None:
@@ -34,9 +41,13 @@ def default_formed_by() -> str | None:
     return f"{provider}/{model}" if provider and model else None
 
 
-def mcp_config(*, formed_by: str, neo4j_uri: str, enable_commit: bool, no_embed: bool) -> dict[str, Any]:
+def mcp_config(
+    *, formed_by: str, neo4j_uri: str, enable_commit: bool, no_embed: bool, log: Path | None = None
+) -> dict[str, Any]:
     """``.pi/mcp.json`` 的内容。stdio 服务只拿到这里写出的环境变量，连接参数因此都写明。"""
     env = {"E09_NEO4J_URI": neo4j_uri, "E09_FORMED_BY": formed_by}
+    if log is not None:
+        env["E09_MCP_LOG"] = str(log)
     if enable_commit:
         env["E09_ENABLE_COMMIT"] = "1"
     if no_embed:
@@ -48,7 +59,6 @@ def mcp_config(*, formed_by: str, neo4j_uri: str, enable_commit: bool, no_embed:
         "env": env,
         "exposure": "direct",
         "timeout": 300,
-        "description": "Knowledge store of CS papers: find, traverse and read evidence; record work as artifacts",
     }
     return {"mcpServers": {SERVER: server}}
 
@@ -67,12 +77,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("error: no pi default model found; give --formed-by provider/model", file=sys.stderr)
         return 1
     config = mcp_config(
-        formed_by=formed_by, neo4j_uri=args.neo4j_uri, enable_commit=args.enable_commit, no_embed=args.no_embed
+        formed_by=formed_by,
+        neo4j_uri=args.neo4j_uri,
+        enable_commit=args.enable_commit,
+        no_embed=args.no_embed,
+        log=target / ".pi/paperweave.log",
     )
     (target / ".pi").mkdir(parents=True)
     (target / ".pi/mcp.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"{target}/.pi/mcp.json  (formed_by {formed_by}, {args.neo4j_uri})")
-    print(f"cd {target} && pi      # trust the directory on first start; non-interactive runs: --approve")
+    (target / ".pi/settings.json").write_text(
+        json.dumps({"sessionDir": ".pi/sessions"}, indent=2) + "\n", encoding="utf-8"
+    )
+    (target / "pi.sh").write_text(LAUNCHER, encoding="utf-8")
+    (target / "pi.sh").chmod(0o755)
+    print(f"{target}  (formed_by {formed_by}, {args.neo4j_uri})")
+    print(f"{target}/pi.sh       # trust the directory on first start; resume with -r; non-interactive runs: --approve")
     return 0
 
 
@@ -90,4 +109,4 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["default_formed_by", "main", "mcp_config"]
+__all__ = ["LAUNCHER", "SERVER", "default_formed_by", "main", "mcp_config"]

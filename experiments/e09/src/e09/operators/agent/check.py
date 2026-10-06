@@ -127,20 +127,14 @@ def _dimensions(value: Any, problems: Problems) -> dict[str, str]:
 
 CHECK = agent_operator(
     name="Check",
-    label="Check",
-    description=(
-        "Judge whether pairs of items agree or are comparable on declared dimensions (split, horizon, metric, ...). "
-        "Give exactly one T/F/U judgment per pair and dimension."
-    ),
     params=schema(
         {
-            "items": {"type": "object", "description": "item key -> reference; at least two"},
+            "items": {"type": "object"},
             "pairs": {
                 "anyOf": [
                     {"const": "all_pairs"},
                     {"type": "array", "items": {"type": "array", "items": STRING, "minItems": 2, "maxItems": 2}},
                 ],
-                "description": "all_pairs or a list of [k1, k2]",
             },
             "dimensions": {
                 "type": "array",
@@ -153,7 +147,7 @@ CHECK = agent_operator(
         {
             "judgments": {
                 "type": "array",
-                "items": {**JUDGMENT, "description": "{pair, dimension, value, basis, reason}"},
+                "items": {**JUDGMENT},
             }
         },
         ["judgments"],

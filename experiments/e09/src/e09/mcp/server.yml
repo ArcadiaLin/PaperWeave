@@ -1,0 +1,181 @@
+# PaperWeave 的 MCP 暴露：给模型看的全部文字。服务启动时按本文件装配，结构（参数的类型与必填项）来自
+# e09.operators，这里只写文字。
+#
+#   server        serverInfo：name 与 version
+#   instructions  应该怎样使用这个服务（第一行同时是服务的一句话介绍）
+#   tools.<算子>  title；description：这个操作是什么、何时使用；parameters：参数路径 -> 参数说明
+#
+# 参数路径用 . 连接属性名，[] 表示数组的元素，例如 payload.judgments[].basis。每个顶层参数都必须有说明；
+# 写了不存在的工具或路径时服务不启动。shared 只放 YAML 锚点，供各工具引用。
+
+server:
+  name: PaperWeave
+  version: 0.1.0
+
+instructions: |
+  PaperWeave is a knowledge store built from CS papers.
+  It holds papers, the methods, datasets, tasks and experiments they describe, and artifacts that earlier sessions produced while using that knowledge. Search, Resolve, Traverse and ReadEvidence find objects, follow relations and read the source lines behind them. Extract, Summarize, Generate, Check, Verify, Filter and MatrixConstruct record your work: you supply the content and judgments, the store checks the declared structure and references and keeps each call as an artifact that later sessions can find and reuse. Commit, when listed, changes the stored knowledge itself.
+
+shared:
+  artifact: &artifact
+    title: Optional; generated from op and params when omitted.
+    abs: A few sentences on what this artifact is; used for search.
+    inputs: Object, source, artifact or record references actually used.
+  basis: &basis A reference or a list of references; required for T and F.
+  reason: &reason Required for U.
+
+tools:
+  Search:
+    title: Search
+    description: >-
+      Find objects of one type (Entity, Concept, Content or Artifact) by query and structural conditions.
+      Returns a read view: nodes with all their model edges, and meta with items, bindings and coverage.
+      Artifacts appear only with type=Artifact.
+    parameters:
+      type: One type per call.
+      query: "{text?, mention?, identifier?}: text is matched by full text and vectors, mention by name, identifier exactly. Omit to enumerate by where."
+      kinds: List of kinds, such as [Experiment, Claim]; not for Artifact
+      where: "Structural conditions; for Artifact: op, used, formed_by, session"
+      expand: "Widen reference conditions in where: {narrower: depth} for Concept, {parts: depth} for Entity; depth 1-3."
+      scope: List of paper ids; restricts Content to records from these papers. Omit to search the whole store.
+      budget: Maximum number of results in this page (default 10).
+      continuation: meta.continuation of the previous page; keep the other parameters unchanged.
+
+  Resolve:
+    title: Resolve
+    description: >-
+      Resolve a mention, identifier or text to stored Entity or Concept references of one kind: exact identifier,
+      exact name key, then semantic candidates. Semantic candidates are not identities; confirm them with Filter.
+    parameters:
+      query: "{mention?, identifier?, text?}: the name as written, an identifier, or a description."
+      kind: The kind to resolve to, such as Method, Dataset or Task.
+      scope: global (default).
+      mode: read (default) stops at an exact match; write also lists semantic near-duplicates.
+
+  Traverse:
+    title: Traverse
+    description: >-
+      From confirmed references, follow declared relations hop by hop and keep the paths.
+      Each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}; at most 3 hops.
+      USED in-edges lead to the artifacts that used an object.
+    parameters:
+      start: List of ids to start from.
+      path: "0-3 hops; each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}. An empty path reads the start objects."
+      budget: Maximum number of paths in this page (default 50).
+      continuation: meta.continuation of the previous page; keep the other parameters unchanged.
+
+  ReadEvidence:
+    title: Read evidence
+    description: >-
+      Read the lines a source reference points to (<material>::<section>::<start>:<end>), from paper materials
+      or artifact documents. Each item is available, missing or error; available text carries line numbers.
+    parameters:
+      source_refs: List of source references.
+
+  Commit:
+    title: Commit
+    description: >-
+      Submit a graph-doc: create, change or delete knowledge objects and their relations. Without apply it is a
+      dry run returning a graph-plan with blocking errors, warnings and duplicate candidates; with apply it
+      commits through graph-vc and returns a graph-result. Artifacts cannot be written this way.
+    parameters:
+      doc: The graph-doc as YAML text.
+      source: Source label, recorded in the commit and on new name keys
+      apply: Commit; without it only a dry run
+      message: Commit message.
+      base: The commit the writer's view was read at; only recorded
+      dedup: Check new objects against stored ones (default true)
+
+  Extract:
+    title: Extract
+    description: >-
+      After reading the source, record the specific values needed (result numbers, settings, release addresses)
+      as typed records. Each row names its source reference; record keys come from the key fields.
+    parameters:
+      <<: *artifact
+      params: "{schema: {fields, required?, key}}"
+      params.schema.fields: name -> string | number | integer | boolean | ref | enum[a, b]
+      payload: "{rows, note?}"
+      payload.rows[]: <fields> and source
+      payload.note: "Required when rows is empty: what was read and why nothing."
+
+  Summarize:
+    title: Summarize
+    description: >-
+      Compress and reorganize what the inputs already say. Every paragraph must cite at least one input in
+      square brackets; use Generate when inference or new content is needed.
+    parameters:
+      <<: *artifact
+      params: "{focus}"
+      payload: "{text}"
+      payload.text: Markdown; cite inputs as [ref].
+
+  Generate:
+    title: Generate
+    description: >-
+      Produce new content: a final answer, a draft, an idea or a plan. Numbers, comparisons and judgments
+      should cite the artifacts they come from.
+    parameters:
+      <<: *artifact
+      params: "{purpose: answer | draft | idea | plan | other}"
+      payload: "{text}"
+      payload.text: Markdown; cite inputs as [ref].
+
+  Check:
+    title: Check
+    description: >-
+      Judge whether pairs of items agree or are comparable on declared dimensions (split, horizon, metric, ...).
+      Give exactly one T/F/U judgment per pair and dimension.
+    parameters:
+      <<: *artifact
+      params: "{items, pairs, dimensions}"
+      params.items: item key -> reference; at least two
+      params.pairs: all_pairs or a list of [k1, k2]
+      payload: "{judgments}"
+      payload.judgments[]: "{pair, dimension, value, basis, reason}"
+      payload.judgments[].basis: *basis
+      payload.judgments[].reason: *reason
+
+  Verify:
+    title: Verify
+    description: >-
+      Judge whether a claim holds under the given evidence (T supported, F refuted, U insufficient) and state
+      the conditions under which it holds. Finding no support is U, not F.
+    parameters:
+      <<: *artifact
+      params: "{claim}"
+      params.claim: A reference or {text}
+      payload: "{value, conditions?, basis, reason}"
+      payload.basis: *basis
+      payload.reason: *reason
+
+  Filter:
+    title: Filter
+    description: >-
+      Judge item by item whether each satisfies one condition: candidate identity, applicability, relevance.
+      Give exactly one T/F/U judgment per item; U is kept, not dropped.
+    parameters:
+      <<: *artifact
+      params: "{items, condition: {id, text}}"
+      params.items: item key -> reference
+      payload: "{judgments}"
+      payload.judgments[]: "{key, value, basis, reason}"
+      payload.judgments[].basis: *basis
+      payload.judgments[].reason: *reason
+
+  MatrixConstruct:
+    title: Matrix
+    description: |-
+      Organize a cross-paper comparison as a matrix: methods x datasets, issues x methods, methods x design elements. Declare rows, columns and the cell type, then give exactly one cell per row and column.
+
+      Guidelines:
+      - Use MatrixConstruct for cross-paper comparisons; check comparability with Check first.
+      - Give basis for a cell whenever you can.
+      - For an empty cell, say in its note whether the value is not reported, not applicable, or not checked.
+    parameters:
+      <<: *artifact
+      params: "{rows, columns, cell: {type, question?}}"
+      params.rows: row key -> reference or {text}
+      params.columns: column key -> reference or {text}
+      payload: "{cells, note?}"
+      payload.cells[]: "{row, col, value (null when empty), basis?, note?}"

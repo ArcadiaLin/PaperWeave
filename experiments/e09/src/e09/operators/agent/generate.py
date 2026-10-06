@@ -38,13 +38,8 @@ def generate(params: Mapping[str, Any], payload: Mapping[str, Any], problems: Pr
 
 GENERATE = agent_operator(
     name="Generate",
-    label="Generate",
-    description=(
-        "Produce new content: a final answer, a draft, an idea or a plan. Numbers, comparisons and judgments "
-        "should cite the artifacts they come from."
-    ),
     params=schema({"purpose": {"enum": list(PURPOSES)}}, ["purpose"]),
-    payload=schema({"text": {"type": "string", "description": "Markdown; cite inputs as [ref]."}}, ["text"]),
+    payload=schema({"text": {"type": "string"}}, ["text"]),
     validate=generate,
 )
 

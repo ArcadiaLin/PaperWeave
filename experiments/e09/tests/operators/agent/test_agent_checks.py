@@ -190,3 +190,23 @@ def test_matrix_needs_one_cell_per_row_and_column(store: Store) -> None:
     assert errors(store, changed(request, f"{at}.1.basis", "exp_0001")) == [("reference", f"{at}[1].basis")]
     assert errors(store, changed(request, "params.rows.tf", "method_0001")) == [("reference", "params.rows.tf")]
     assert errors(store, changed(request, "params.cell.type", "float")) == [("schema", "params.cell.type")]
+
+
+def test_a_reference_within_a_listed_one_is_covered(store: Store) -> None:
+    """内容中的来源引用落在 inputs 中同一材料的某个行范围内即可，章节名不比较；记录引用所属的 Artifact 列在
+    inputs 中即可，记录须存在。覆盖它的那一项不再提示 unused-input。"""
+    out = write(store, changed(EXTRACT, "payload.rows.1.source", "paper_0001::Comparison::11:11"))
+    assert out["status"] == "created" and [w["at"] for w in out["warnings"]] == ["inputs[0]"]
+    assert errors(store, changed(EXTRACT, "payload.rows.1.source", "paper_0001::Comparison::11:13")) == [
+        ("reference", "payload.rows[1].source")
+    ]
+
+    a = f"art_0001#{KEYS[0]}"
+    request = call("Verify", ["art_0001"], {"claim": a}, {"value": "T", "basis": a})
+    out = write(store, request)
+    assert out["status"] == "created" and out["warnings"] == []
+    roles = store.query(
+        "MATCH (:Artifact {id: $id})-[r:USED]->(t) RETURN t.id AS t, r.role AS role", id=out["artifact"]
+    )
+    assert [(r["t"], r["role"]) for r in roles] == [("art_0001", ["claim"])]
+    assert errors(store, changed(request, "params.claim", "art_0001#nope")) == [("reference", "params.claim")]

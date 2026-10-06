@@ -11,15 +11,18 @@
      一致、行号不越界；
    - ``params`` 与 ``payload`` 符合该算子的 schema，判断类的每个单元恰有一条判断（各算子的 ``validate``，
      见 :mod:`e09.operators.agent`）；
-   - ``params`` 与 ``payload`` 中出现的每个引用都属于 ``inputs``。来源引用的开头写材料 id 或材料所属的节点 id
-     都算同一个引用；文档头部的 ``nodes_used`` 统一写成材料 id，与 ReadEvidence 读取的写法相同。
+   - ``params`` 与 ``payload`` 中出现的每个引用都由 ``inputs`` 覆盖：与某一项相同；或是来源引用，所指的行落在
+     同一材料的某个来源引用的行范围内（章节名不比较）；或是记录引用，所属的 Artifact 列在 ``inputs`` 中（记录须
+     存在）。来源引用的开头写材料 id 或材料所属的节点 id 都算同一个引用；文档头部的 ``nodes_used`` 统一写成
+     材料 id，与 ReadEvidence 读取的写法相同。
 
 2. **幂等**：相同 ``artifact_key``（``op``、``inputs``、``params``、``payload`` 与 ``formed_by`` 的哈希）视为重试，
    返回已有的 Artifact，不重复写入。
 
-3. **写入**：文档按内容寻址写到材料根目录下（已存在且内容相同就不再写）；再经 graph-vc 在一个事务中写 Artifact
+3. **写入**：文档按标题写到材料根目录的 ``artifacts/`` 下，标题重复时加 `` (1)``、`` (2)``；内容相同的文档已有
+   Material 时沿用它的文件，同名文件内容相同时直接沿用（:func:`_place`）。再经 graph-vc 在一个事务中写 Artifact
    节点、``USED`` 边、Material 与 ``MATERIAL_OF``，产生一个提交（``source`` 为 ``operator:<op>``，``meta`` 记
-   Artifact 的 id 与会话）。事务失败时文件留在原处：它按内容寻址、没有节点引用，不影响库。
+   Artifact 的 id 与会话）。事务失败时文件留在原处：没有节点引用，不影响库，重试时按内容相同直接沿用。
 
 4. 提交后补算 ``title`` 与 ``abs`` 的向量；失败不影响已完成的提交，只在 ``warnings`` 中提示。
 
@@ -47,7 +50,7 @@ from ..query.materials import load_lines, materials
 from ..store.database import setup_database
 from ..store.store import ContractError, Store
 from ..yamlfmt import dump
-from .document import Document, compose, data_of, header_of, record_keys
+from .document import DIRECTORY, Document, compose, data_of, file_name, header_of, record_keys
 from .stale import document_text, documents
 
 VERSION = "v0.1"
@@ -74,7 +77,7 @@ class Output:
     title: str
     body: str
     data: Any = None  # 正文末尾的数据块；只有 Extract、Check、Filter、MatrixConstruct 有
-    refs: list[tuple[str, str]] = field(default_factory=list)  # (位置, 引用)：必须属于 inputs
+    refs: list[tuple[str, str]] = field(default_factory=list)  # (位置, 引用)：必须由 inputs 覆盖
     roles: dict[str, list[str]] = field(default_factory=dict)  # 引用 → 它在参数中的角色（USED.role）
     stats: dict[str, Any] = field(default_factory=dict)
 
@@ -118,11 +121,11 @@ def write_artifact(
         raise OperatorError(problems.items)
     op = request["op"]
     output = validators[op](request["params"], request["payload"], problems)
-    inputs, spell = _resolve(store, request["inputs"], output, problems)
+    inputs, owner = _resolve(store, request["inputs"], output, problems)
     if problems:
         raise OperatorError(problems.items)
 
-    warnings = _unused(inputs, output, spell)
+    warnings = _unused(inputs, output, owner)
     key = artifact_key(request)
     found = store.query("MATCH (a:Artifact {artifact_key: $key}) RETURN a.id AS id", key=key)
     if found:
@@ -132,7 +135,8 @@ def write_artifact(
     title = request.get("title") or output.title
     nodes_used = [i.spelling for i in inputs]
     document = compose(title, nodes_used, request["abs"].strip(), output.body, output.data)
-    _store_file(store, document)
+    path = _place(store, document, title)
+    _store_file(store, path, document)
     art_id = store.graph.allocate_ids(PREFIX, 1)[0]
     props = {
         "op": op,
@@ -144,7 +148,7 @@ def write_artifact(
         "session": request["session"],
         "artifact_key": key,
     }
-    changeset = _changeset(store, art_id, props, document, _used(inputs, output, spell))
+    changeset = _changeset(store, art_id, props, document, path, _used(inputs, output, owner))
     try:
         record = store.graph.commit(
             changeset,
@@ -163,7 +167,7 @@ def write_artifact(
         except (httpx.HTTPError, ValueError) as exc:
             msg = f"embeddings not synced ({exc}); run make embed"
             warnings.append({"rule": "embedding", "at": art_id, "msg": msg})
-    return _result("created", art_id, record.id, document.path, document.material_id, warnings, output)
+    return _result("created", art_id, record.id, path, document.material_id, warnings, output)
 
 
 def artifact_key(request: Mapping[str, Any]) -> str:
@@ -202,12 +206,13 @@ def _shape(request: Any, validators: Mapping[str, Validate], problems: Problems)
             problems.add("format", key, "a mapping")
 
 
-def _resolve(
-    store: Store, texts: list[str], output: Output, problems: Problems
-) -> tuple[list[Input], Callable[[str], str | None]]:
-    """核对 ``inputs`` 都在库中，并核对 ``params`` 与 ``payload`` 中的引用都属于 ``inputs``。
+Owner = Callable[[str], "Input | None"]
 
-    返回 ``inputs`` 与把一个引用换成规范写法的函数（不是引用时为 ``None``）。"""
+
+def _resolve(store: Store, texts: list[str], output: Output, problems: Problems) -> tuple[list[Input], Owner]:
+    """核对 ``inputs`` 都在库中，并核对 ``params`` 与 ``payload`` 中的引用都由 ``inputs`` 覆盖。
+
+    返回 ``inputs`` 与找出覆盖一个引用的那一项的函数（没有时为 ``None``）。"""
     parsed = [(i, text, parse_ref(text)) for i, text in enumerate(texts)]
     mentioned = [parse_ref(text) for _, text in output.refs]
     heads = {r.head for r in [*(r for _, _, r in parsed), *mentioned] if r is not None}
@@ -268,14 +273,46 @@ def _resolve(
             else:
                 inputs.append(Input(ref, material["owner"], spell(ref.text) or ref.text, material["id"]))
 
-    accepted = {i.spelling for i in inputs} | {i.ref.text for i in inputs}
+    by_spelling = {i.spelling: i for i in inputs} | {i.ref.text: i for i in inputs}
+
+    def owner(text: str) -> Input | None:
+        ref = parse_ref(text)
+        if ref is None:
+            return None
+        exact = by_spelling.get(text) or by_spelling.get(spell(text) or "")
+        if exact is not None:
+            return exact
+        if ref.kind == "record":
+            return next((i for i in inputs if i.ref.kind == "object" and i.ref.head == ref.head), None)
+        material = found.get(ref.head) if ref.kind == "source" else None
+        if material is None:
+            return None
+        span = _span(ref.locator)
+        return next((i for i in inputs if i.material == material["id"] and _within(span, _span(i.ref.locator))), None)
+
     for at, text in output.refs:
-        spelled = spell(text)
-        if spelled is None:
+        ref = parse_ref(text)
+        holder = owner(text)
+        if ref is None:
             problems.add("reference", at, f"not a reference: {text!r}")
-        elif text not in accepted and spelled not in accepted and not _failed(text, texts, spell):
-            problems.add("reference", at, f"{text} is not among inputs")
-    return inputs, spell
+        elif holder is None:
+            if not _failed(text, texts, spell):
+                problems.add("reference", at, f"{text} is not among inputs or within a source reference in inputs")
+        elif ref.kind == "record" and holder.ref.kind == "object":
+            if ref.head not in keys:
+                keys[ref.head] = _record_keys(store, ref.head)
+            if ref.key not in keys[ref.head]:
+                problems.add("reference", at, f"{ref.head} has no record {ref.key!r}")
+    return inputs, owner
+
+
+def _span(locator: str | None) -> tuple[int, int]:
+    match = LOCATOR.fullmatch(locator or "")
+    return (int(match["start"]), int(match["end"])) if match else (0, -1)
+
+
+def _within(inner: tuple[int, int], outer: tuple[int, int]) -> bool:
+    return outer[0] <= inner[0] <= inner[1] <= outer[1]
 
 
 def _failed(text: str, inputs: list[str], spell: Callable[[str], str | None]) -> bool:
@@ -291,22 +328,21 @@ def _record_keys(store: Store, art_id: str) -> list[str]:
     return record_keys(info["op"], data_of(text)) if text is not None else []
 
 
-def _unused(inputs: list[Input], output: Output, spell: Callable[[str], str | None]) -> list[dict[str, str]]:
-    """``inputs`` 中没有在参数或内容里出现的引用：不阻塞，提示。"""
-    mentioned = {spell(text) for _, text in output.refs}
+def _unused(inputs: list[Input], output: Output, owner: Owner) -> list[dict[str, str]]:
+    """``inputs`` 中没有覆盖参数或内容里任何引用的项：不阻塞，提示。"""
+    used = {id(i) for _, text in output.refs if (i := owner(text)) is not None}
     return [
         {"rule": "unused-input", "at": f"inputs[{n}]", "msg": f"{i.ref.text} is not referenced in params or payload"}
         for n, i in enumerate(inputs)
-        if i.spelling not in mentioned and i.ref.text not in mentioned
+        if id(i) not in used
     ]
 
 
 # ── 写入 ──────────────────────────────────────────────────────────────
 
 
-def _used(inputs: list[Input], output: Output, spell: Callable[[str], str | None]) -> dict[str, dict[str, Any]]:
+def _used(inputs: list[Input], output: Output, owner: Owner) -> dict[str, dict[str, Any]]:
     """``USED`` 的终点 → 边属性；同一终点的角色与定位合成列表。"""
-    by_spelling = {i.spelling: i for i in inputs} | {i.ref.text: i for i in inputs}
     roles: dict[str, list[str]] = {}
     locators: dict[str, list[str]] = {}
     material: dict[str, str] = {}
@@ -318,9 +354,9 @@ def _used(inputs: list[Input], output: Output, spell: Callable[[str], str | None
             material[i.target] = i.material
             locators.setdefault(i.target, []).append(i.ref.locator)
     for text, names in output.roles.items():
-        owner = by_spelling.get(text) or by_spelling.get(spell(text) or "")
-        if owner is not None:
-            roles[owner.target] += names
+        holder = owner(text)
+        if holder is not None:
+            roles[holder.target] += names
     edges: dict[str, dict[str, Any]] = {}
     for target in roles:
         props: dict[str, Any] = {}
@@ -333,11 +369,26 @@ def _used(inputs: list[Input], output: Output, spell: Callable[[str], str | None
     return edges
 
 
-def _store_file(store: Store, document: Document) -> None:
-    file = store.material_root / document.path
+def _place(store: Store, document: Document, title: str) -> str:
+    """文档的路径（相对于材料根目录）。内容相同的文档已有 Material 时沿用它的路径；否则取标题对应的文件名，已被
+    内容不同的文件占用时依次加序号。写入逐个执行，选定的名字不会被同时占用。"""
+    existing = store.graph.local_state([document.material_id]).nodes.get(document.material_id)
+    if existing is not None:
+        return str(existing.props["path"])
+    n = 0
+    while True:
+        path = f"{DIRECTORY}/{file_name(title, n)}"
+        file = store.material_root / path
+        if not file.exists() or hashlib.sha256(file.read_bytes()).hexdigest() == document.sha256:
+            return path
+        n += 1
+
+
+def _store_file(store: Store, path: str, document: Document) -> None:
+    file = store.material_root / path
     if file.exists():
         if hashlib.sha256(file.read_bytes()).hexdigest() != document.sha256:
-            raise RuntimeError(f"{document.path} exists with other content; artifact documents are never rewritten")
+            raise RuntimeError(f"{path} exists with other content; artifact documents are never rewritten")
         return
     file.parent.mkdir(parents=True, exist_ok=True)
     partial = file.with_name(file.name + ".partial")
@@ -346,15 +397,15 @@ def _store_file(store: Store, document: Document) -> None:
 
 
 def _changeset(
-    store: Store, art_id: str, props: dict[str, Any], document: Document, used: dict[str, dict[str, Any]]
+    store: Store, art_id: str, props: dict[str, Any], document: Document, path: str, used: dict[str, dict[str, Any]]
 ) -> Changeset:
     nodes = [NodeChange.create(art_id, [ARTIFACT], props)]
     if document.material_id not in store.graph.local_state([document.material_id]).nodes:
-        material = {"path": document.path, "format": "markdown", "content_hash": document.sha256}
+        material = {"path": path, "format": "markdown", "content_hash": document.sha256}
         nodes.append(NodeChange.create(document.material_id, ["Material"], material))
     edges = [EdgeChange.create(document.material_id, "MATERIAL_OF", art_id)]
     edges += [EdgeChange.create(art_id, "USED", target, edge) for target, edge in used.items()]
-    return Changeset(nodes=tuple(nodes), edges=tuple(edges), files=(FileRef(document.path, document.sha256),))
+    return Changeset(nodes=tuple(nodes), edges=tuple(edges), files=(FileRef(path, document.sha256),))
 
 
 def _existing(store: Store, art_id: str, warnings: list[dict[str, str]], output: Output) -> dict[str, Any]:

@@ -240,7 +240,7 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 **共同校验（任一不过即整次拒绝，不写入）：**
 
 1. `inputs` 是不重复的引用列表。其中的对象引用、Artifact 与记录引用都在库中（记录引用的键须出现在该 Artifact 文档的数据块中）；来源引用格式正确，所指材料在库中，文件与登记的哈希一致，行号不越界。
-2. `params` 与 `payload` 中出现的每个引用（引用参数、`basis`、`source`、`ref` 字段与正文中方括号里的引用）都属于 `inputs`。来源引用的开头写材料 id 或材料所属的节点 id 视为同一个引用。
+2. `params` 与 `payload` 中出现的每个引用（引用参数、`basis`、`source`、`ref` 字段与正文中方括号里的引用）都属于 `inputs`，即由 `inputs` 覆盖：与其中某一项相同；或是来源引用，所指的行落在同一材料的某个来源引用的行范围内（章节名不比较）；或是记录引用，所属的 Artifact 列在 `inputs` 中（记录须存在）。来源引用的开头写材料 id 或材料所属的节点 id 视为同一个引用。覆盖了某个引用的 `inputs` 项不再提示 `unused-input`。
 3. `params` 与 `payload` 符合该算子的 schema；判断类的每个单元恰有一条判断（不能遗漏，也不能重复）。给了判断但不合格的单元只报不合格，不再另报遗漏。
 
 **返回：** `status` 为 `created`，或相同调用的重试返回 `existing`（第 5.4 节，此时 `commit` 为空）；`artifact` 为 Artifact 的 id；`commit` 为本次写入的提交 id；`document` 为产物文档的路径与 `material_ref`；`stats` 为该算子的统计（目前只有 `Generate`）；`render` 是文档正文（不含头部），可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示：`unused-input`（某个输入没有在 `params` 与 `payload` 中被引用）、`embedding`（提交后补算向量失败，提交保留）。
@@ -263,7 +263,7 @@ Extract(inputs, params: {schema: {fields: {name: type}, required: [...], key: [.
 - **字段类型：** `string`、`number`、`integer`、`boolean`、`ref`（图中对象引用）、`enum[...]`。单位、口径等写成独立字段，不混进数值。
 - **`source`：** 每行的出处，为 `inputs` 中的一个引用。
 - **记录键：** `key` 必填，列出决定一条记录的字段；记录键由这些字段的值依次转成小写、非字母数字换成 `-` 后用 `-` 连接，例如 `method_0003-dataset_0001-96`。
-- **校验：** 字段名为小写标识；每行只含声明的字段与 `source`，值符合类型；`required` 与 `key` 中的字段非空；记录键在本次产物中唯一；`ref` 字段与 `source` 的引用都属于 `inputs`（因而在库中）。
+- **校验：** 字段名为标识符（字母开头，由字母、数字与 `_` 组成，`key` 与 `source` 保留）；每行只含声明的字段与 `source`，值符合类型；`required` 与 `key` 中的字段非空；记录键在本次产物中唯一；`ref` 字段与 `source` 的引用都属于 `inputs`（因而在库中）。
 - **空结果：** `rows` 为空时必须写 `note`，说明读了什么、为什么没有，记录的是"材料中没有找到"。
 - **正文：** 一张记录表（第一列为记录键，未填的字段写"—"，最后一列为出处）；`note`（如有）；数据块 `{schema, rows: [{key, <fields>, source}], note?}`。每条记录可用 `<artifact>#<key>` 引用。
 - **不做的事：** 不跨行合并不同设置下的值，不换算单位，不补原文没有的值。
@@ -397,7 +397,7 @@ abs: <Agent 撰写或自动生成>
 
 - `nodes_used` 按 `inputs` 的顺序，来源引用统一写成材料 id 的形式，与 `ReadEvidence` 的写法相同。它是不可变的输入记录，读取时据此计算过期（第 5.6 节）。
 - 数据块是文档中最后一个 `yaml` 代码块；记录引用按它解析。
-- 文档按内容寻址：存放在材料根目录下的 `artifacts/<内容哈希前 12 位>.md`，对应的 Material id 为 `material_<内容哈希前 12 位>`。文件不进 git，版本由提交链记录（`docs/experiments/e09/operators/commit.md` §8.5）。
+- 文档按标题命名：存放在材料根目录下的 `artifacts/<标题>.md`，让读文件的 Agent 从文件名就能认出内容。标题中文件名不能用的字符换成空格，过长时按字节截断；文件名已被内容不同的文档占用时依次加 ` (1)`、` (2)`。对应的 Material id 仍由内容哈希给出（`material_<内容哈希前 12 位>`），与文件名无关，来源引用写的是 Material id。文件不进 git，版本由提交链记录（`docs/experiments/e09/operators/commit.md` §8.5）。
 - `op`、形成者、时间与参数记在节点上，不重复写进文档。
 
 ### 5.4 身份与幂等
@@ -409,11 +409,11 @@ Artifact 没有同一性问题：不查重，不合并，只追加。相同 `art
 Agent 算子校验通过后，经与 `Commit` 相同的版本底层（graph-vc）写入，顺序是：
 
 1. 按 `artifact_key` 查找，已有则作为重试返回（第 5.4 节）；
-2. 写文档：先写临时文件再改名；同一路径已有内容相同的文件就不再写，内容不同则拒绝；
+2. 写文档：内容相同的文档已有 Material 时沿用它的文件；否则按标题取文件名，被内容不同的文件占用时加序号，同名文件内容相同时直接沿用；先写临时文件再改名；
 3. 分配 id，在一个事务中写 Artifact 节点、`USED` 边、Material（同一文档已登记时不重复建）与 `MATERIAL_OF`，产生一个提交记录：`source` 为 `operator:<op>`，`author` 为 `formed_by`，`meta` 记 Artifact 的 id 与会话，`files` 记文档的路径与哈希；
 4. 提交后补算 `title` 与 `abs` 的向量；失败不回滚，只在 `warnings` 中提示。
 
-事务失败时文档文件留在原处：它按内容寻址，没有节点引用，不影响库，重试时直接复用。形成信息在节点与提交记录上。
+事务失败时文档文件留在原处：它没有节点引用，不影响库，重试时内容相同而直接复用。形成信息在节点与提交记录上。
 
 ### 5.6 检索与过期
 
@@ -467,9 +467,13 @@ Artifact 是未经审定的工作痕迹；Observation 是由提交者明确写�
 
 ## 9. E09 实现对照
 
-模块都在 `experiments/e09/src/e09/` 下。每个算子一个文件，定义一个 `Operator`（`operators/base.py`：名称、说明、参数的 JSON Schema、使用指南与执行），按名称登记在
-`operators.OPERATORS` 中。通用 Agent 经 MCP 服务 `python -m e09.mcp` 使用算子：每个算子一个工具，`inputSchema` 就是
-参数的 JSON Schema，使用指南接在说明之后；`Commit` 只在 `E09_ENABLE_COMMIT=1` 时列出。命令行入口 `python -m e09`
+模块都在 `experiments/e09/src/e09/` 下。每个算子一个文件，定义一个 `Operator`（`operators/base.py`：名称、参数的 JSON Schema 与执行），按名称登记在 `operators.OPERATORS` 中。
+通用 Agent 经 MCP 服务 PaperWeave（`python -m e09.mcp`）使用算子：每个算子一个工具，给模型看的文字（`instructions`、
+工具的标题与说明、参数说明）都在 `mcp/server.yml`，启动时与算子的结构装配成工具；`Commit` 只在 `E09_ENABLE_COMMIT=1`
+时列出。工具的每个顶层参数都声明一种确定的 JSON 类型（列表参数是数组，`query` 是对象，`Commit.doc` 是 YAML 文本），
+不用 `anyOf`：按 `type` 转换参数的工具调用解析器（如 sglang 解析 qwen 的工具调用）会把只有 `anyOf` 的参数当作字符串。
+算子本身仍接受单个字符串、`scope="global"` 等写法。
+顶层的对象与数组参数在暴露的 schema 中也接受字符串：`Operator.call` 执行前按算子的 schema 兜底修复参数（`operators/repair.py`：JSON 文本解析并补齐末尾缺少的括号、字面量转换、枚举的大小写与 `true`/`false` 判断），来源引用的写法偏差由 `model/refs.py` 的 `normalize_ref` 兜底；修复不告诉 Agent，只记在服务日志中（stderr 与 `E09_MCP_LOG`）。命令行入口 `python -m e09`
 的请求以 `op` 为算子名；直接给 graph-doc 时视为 `Commit`。两个入口经同一个 `Operator.call`，结果相同。共用的支持放在与
 `operators/` 同级的包中，依赖方向为 `operators → commit、artifact、query → store、model`。
 

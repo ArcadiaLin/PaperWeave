@@ -34,13 +34,8 @@ def summarize(params: Mapping[str, Any], payload: Mapping[str, Any], problems: P
 
 SUMMARIZE = agent_operator(
     name="Summarize",
-    label="Summarize",
-    description=(
-        "Compress and reorganize what the inputs already say. Every paragraph must cite at least one input in "
-        "square brackets; use Generate when inference or new content is needed."
-    ),
     params=schema({"focus": {"type": "string"}}, ["focus"]),
-    payload=schema({"text": {"type": "string", "description": "Markdown; cite inputs as [ref]."}}, ["text"]),
+    payload=schema({"text": {"type": "string"}}, ["text"]),
     validate=summarize,
 )
 

@@ -43,13 +43,15 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 - 由中间件执行的算子（`operators/db/`）：Search、Resolve、Traverse、ReadEvidence 读取，不写库；Commit 提交 graph-doc，
   也可写成 `{op: Commit, doc, source, apply, message, base, dedup}`。
 - Agent 算子（`operators/agent/`）：Extract、Summarize、Generate、Check、Verify、Filter、MatrixConstruct，每次调用写一个
-  Artifact，产生一个提交。文档按内容寻址写到 `data/raw/e09-paper-knowledge/artifacts/`（不进 git），登记为 Material，
+  Artifact，产生一个提交。文档按标题命名写到 `data/raw/e09-paper-knowledge/artifacts/`（重名时加 ` (1)`，不进 git），登记为 Material，
   可用 ReadEvidence 读取。MatrixConstruct 由 Agent 填写矩阵，中间件只校验表格结构；Rank 已取消。
-- 给通用 Agent 用的入口是 MCP 服务 `python -m e09.mcp`（stdio）：每个算子一个工具，工具名即算子名，参数与结果与命令行
-  相同，错误结果标为 `isError`。Agent 算子的 `session` 由服务进程启动时生成，`formed_by` 取环境变量 `E09_FORMED_BY`；
+- 给通用 Agent 用的入口是 MCP 服务 PaperWeave（`python -m e09.mcp`，stdio）：每个算子一个工具，工具名即算子名，参数与
+  结果与命令行相同，错误结果标为 `isError`。给模型看的全部文字（`instructions`、工具的标题与说明、参数说明）在
+  `src/e09/mcp/server.yml`，启动时按它装配，对不上算子时服务不启动；算子的代码只给结构。Agent 算子的 `session` 由服务进程启动时生成，`formed_by` 取环境变量 `E09_FORMED_BY`；
   `E09_ENABLE_COMMIT=1` 时才列出 Commit。`make workspace DIR=...`（`python -m e09.workspace`）在仓库外生成实验目录，
-  其中只有登记该服务的 `.pi/mcp.json`（`formed_by` 默认取 pi 的默认模型）；在目录中直接运行默认的 `pi`，第一次启动时
-  确认信任该目录，非交互运行加 `--approve`。目录必须在仓库外，否则 pi 会加载仓库的 `AGENTS.md`。
+  其中只有登记该服务的 `.pi/mcp.json`（`formed_by` 默认取 pi 的默认模型）、把会话存到 `.pi/sessions/` 的
+  `.pi/settings.json` 与启动脚本 `pi.sh`（`./pi.sh` 进入交互界面，`./pi.sh -r` 选择会话继续）。第一次启动时确认信任该
+  目录，非交互运行加 `--approve`。目录必须在仓库外，否则 pi 会加载仓库的 `AGENTS.md`。
 - 读视图是一份 graph-doc：`nodes` 原样交回 Commit 为 `noop`，`meta` 是 AccessResult。
 - 连接、查重与向量补算都用 `E09_NEO4J_URI` 所指的库。有数据却没有版本记录的库（如旧写入路径建出的库）一律拒绝。
   首次提交时建立版本记录、约束、全文索引与向量索引；Agent 算子通过校验、确实写入前同样建立。提交后补算向量，向量服务不可用时只给
@@ -92,9 +94,10 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 | 位置 | 内容 |
 | --- | --- |
 | `cli` | 命令行入口 `python -m e09`：按 `op` 分发；直接给 graph-doc 时视为 Commit |
-| `mcp`、`workspace` | MCP 入口 `python -m e09.mcp`：算子作为 MCP 工具；实验目录的生成 |
+| `mcp/server`、`mcp/spec`、`mcp/server.yml` | MCP 服务 PaperWeave（`python -m e09.mcp`）；按 `server.yml` 装配工具并核对；给模型看的全部文字 |
+| `workspace` | 实验目录的生成 |
 | `config`、`env_check` | 路径与连接参数；环境自检（`make check`） |
-| `operators/base` | `Operator`（name、label、description、parameters、prompt_guidelines、execute；作为 MCP 工具时 guidelines 接在 description 后）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
+| `operators/base` | `Operator`（name、family、parameters、execute；只有结构，文字在 `mcp/server.yml`）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
 | `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact |
 | `operators/db/resolve` | Resolve：id → alias → 语义三级解析，Entity 与 Concept |
 | `operators/db/traverse` | Traverse：按端点表校验每一跳，传递性关系的 `depth`，路径绑定；含 `USED` |

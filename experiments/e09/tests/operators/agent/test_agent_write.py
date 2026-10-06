@@ -25,7 +25,7 @@ def test_extract_writes_a_document_used_edges_and_a_commit(store: Store) -> None
     assert out["warnings"] == [unused]  # 列入了实验，但记录里没有引用它
 
     path = out["document"]["path"]
-    assert path.startswith("artifacts/") and path.endswith(".md")
+    assert path == "artifacts/DLinear MSE on ETTh1 and Weather.md"  # 按标题命名
     text = (store.material_root / path).read_text(encoding="utf-8")
     header = header_of(text)
     material = store.query("MATCH (m:Material)-[:MATERIAL_OF]->(:Paper) RETURN m.id AS id")[0]["id"]
@@ -147,3 +147,10 @@ def test_the_operator_takes_session_and_formed_by_from_the_context(store: Store)
     out = OPERATORS["Extract"].call(ctx, params)  # 作为工具调用：没有 op，环境信息不在参数中
     assert not out.is_error
     assert out.details["status"] == "existing" and out.details["artifact"] == "art_0001"  # 与直接写入的请求相同
+
+
+def test_a_different_document_with_the_same_title_gets_a_number(store: Store) -> None:
+    out = write(store, {**EXTRACT, "abs": "The same records, described differently."})
+    assert out["status"] == "created" and out["document"]["path"] == "artifacts/DLinear MSE on ETTh1 and Weather (1).md"
+    first = store.query("MATCH (m:Material)-[:MATERIAL_OF]->(:Artifact {id: 'art_0001'}) RETURN m.path AS p")
+    assert first[0]["p"] == "artifacts/DLinear MSE on ETTh1 and Weather.md"  # 已有的文档不动

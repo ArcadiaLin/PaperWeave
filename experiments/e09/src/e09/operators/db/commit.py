@@ -70,12 +70,12 @@ def run(
 
 PARAMETERS = schema(
     {
-        "doc": {"anyOf": [STRING, {"type": "object"}], "description": "The graph-doc, as YAML text or a mapping"},
-        "source": {"type": "string", "description": "Source label, recorded in the commit and on new name keys"},
-        "apply": {"type": "boolean", "description": "Commit; without it only a dry run"},
+        "doc": STRING,
+        "source": {"type": "string"},
+        "apply": {"type": "boolean"},
         "message": {"type": "string"},
-        "base": {"type": "string", "description": "The commit the writer's view was read at; only recorded"},
-        "dedup": {"type": "boolean", "description": "Check new objects against stored ones (default true)"},
+        "base": {"type": "string"},
+        "dedup": {"type": "boolean"},
     },
     ["doc", "source"],
 )
@@ -108,12 +108,6 @@ def execute(call: Context, request: Mapping[str, Any]) -> dict[str, Any]:
 
 COMMIT = Operator(
     name="Commit",
-    label="Commit",
-    description=(
-        "Submit a graph-doc: create, change or delete knowledge objects and their relations. Without apply it is a "
-        "dry run returning a graph-plan with blocking errors, warnings and duplicate candidates; with apply it "
-        "commits through graph-vc and returns a graph-result. Artifacts cannot be written this way."
-    ),
     family="db",
     parameters=PARAMETERS,
     execute=execute,

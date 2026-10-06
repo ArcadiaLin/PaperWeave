@@ -161,15 +161,10 @@ def _label(value: Any) -> str:
 
 MATRIX_CONSTRUCT = agent_operator(
     name="MatrixConstruct",
-    label="Matrix",
-    description=(
-        "Organize a cross-paper comparison as a matrix: methods x datasets, issues x methods, methods x design "
-        "elements. Declare rows, columns and the cell type, then give exactly one cell per row and column."
-    ),
     params=schema(
         {
-            "rows": {"type": "object", "description": "row key -> reference or {text}"},
-            "columns": {"type": "object", "description": "column key -> reference or {text}"},
+            "rows": {"type": "object"},
+            "columns": {"type": "object"},
             "cell": schema({"type": {"type": "string"}, "question": {"type": "string"}}, ["type"]),
         },
         ["rows", "columns", "cell"],
@@ -178,18 +173,13 @@ MATRIX_CONSTRUCT = agent_operator(
         {
             "cells": {
                 "type": "array",
-                "items": {"type": "object", "description": "{row, col, value (null when empty), basis?, note?}"},
+                "items": {"type": "object"},
             },
             "note": {"type": "string"},
         },
         ["cells"],
     ),
     validate=matrix,
-    prompt_guidelines=(
-        "Use MatrixConstruct for cross-paper comparisons; check comparability with Check first.",
-        "Give basis for a cell whenever you can.",
-        "For an empty cell, say in its note whether the value is not reported, not applicable, or not checked.",
-    ),
 )
 
 

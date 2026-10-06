@@ -16,7 +16,9 @@ NO_STORE: Any = None  # 被拒绝的请求不会用到库
 
 
 def _typed(schema: dict[str, Any]) -> bool:
-    return bool({"type", "anyOf", "enum", "const"} & set(schema))
+    """顶层参数有确定的 JSON 类型。只写 anyOf 时，按 type 转换参数的工具调用解析器（如 sglang 对 qwen）会把值当作
+    字符串，数组与对象因此变成 JSON 文本。"""
+    return isinstance(schema.get("type"), str)
 
 
 @pytest.mark.parametrize("name", list(OPERATORS))
