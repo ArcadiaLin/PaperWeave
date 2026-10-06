@@ -132,7 +132,7 @@ def errors(store: Store, request: dict[str, Any]) -> list[tuple[str, str]]:
     with pytest.raises(OperatorError) as exc:
         write(store, request)
     assert store.graph.head() == head
-    return [(e["rule"], e["where"]) for e in exc.value.errors]
+    return [(e["rule"], e["at"]) for e in exc.value.errors]
 
 
 EXTRACT = call(

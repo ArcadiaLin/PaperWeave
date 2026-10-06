@@ -84,7 +84,7 @@ def test_an_empty_extract_records_what_was_read(store: Store) -> None:
     out = write(store, request)
     text = (store.material_root / out["document"]["path"]).read_text(encoding="utf-8")
     assert data_of(text)["rows"] == [] and "only MAE" in out["render"]
-    assert [w["where"] for w in out["warnings"]] == [f"inputs[{i}]" for i in range(5)]
+    assert [w["at"] for w in out["warnings"]] == [f"inputs[{i}]" for i in range(5)]
 
 
 def test_summarize_needs_a_reference_in_every_paragraph(store: Store) -> None:

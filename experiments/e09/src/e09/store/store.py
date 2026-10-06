@@ -17,14 +17,17 @@ Embed = Callable[[list[str]], list[list[float]]]
 
 
 class ContractError(ValueError):
-    """调用不符合算子契约：未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合。
+    """调用没有被执行，什么也没有写入：未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合等。
 
-    契约错误不返回部分结果。``problems`` 是 ``[{at, msg}]``，``at`` 指向出错的参数。
+    ``errors`` 是 ``[{rule, at, msg}]``，与 Commit 阻塞项的形状相同；``at`` 指向出错的参数，没有给 ``rule`` 的
+    记为 ``schema``（参数的取值）。``status`` 是返回给调用者的状态：``rejected``，或写入时与并发写入冲突的
+    ``conflict``。
     """
 
-    def __init__(self, problems: list[dict[str, str]]):
-        super().__init__("; ".join(f"{p['at']}: {p['msg']}" for p in problems))
-        self.problems = problems
+    def __init__(self, errors: list[dict[str, str]], *, status: str = "rejected"):
+        self.errors = [{"rule": e.get("rule", "schema"), "at": e["at"], "msg": e["msg"]} for e in errors]
+        self.status = status
+        super().__init__("; ".join(f"{e['at']}: {e['msg']}" for e in self.errors))
 
 
 @dataclass(frozen=True, slots=True)

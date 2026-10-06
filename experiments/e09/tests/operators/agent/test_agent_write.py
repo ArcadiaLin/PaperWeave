@@ -9,6 +9,7 @@ from conftest import AT, EXTRACT, KEYS, MATERIAL, SOURCE, call, commit_doc, writ
 
 from e09.artifact.document import data_of, header_of
 from e09.model.schema import ARTIFACT, kind_of
+from e09.operators import OPERATORS, Context
 from e09.operators.db.read_evidence import read_evidence
 from e09.operators.db.search import search
 from e09.operators.db.traverse import traverse
@@ -20,7 +21,7 @@ def test_extract_writes_a_document_used_edges_and_a_commit(store: Store) -> None
     head = store.graph.head()
     out = write(store, EXTRACT)
     assert out["status"] == "created" and out["artifact"] == "art_0001"
-    unused = {"rule": "unused-input", "where": "inputs[0]", "msg": "exp_0001 is not referenced in params or payload"}
+    unused = {"rule": "unused-input", "at": "inputs[0]", "msg": "exp_0001 is not referenced in params or payload"}
     assert out["warnings"] == [unused]  # 列入了实验，但记录里没有引用它
 
     path = out["document"]["path"]
@@ -78,7 +79,7 @@ def test_records_of_an_artifact_can_be_used(store: Store) -> None:
     assert edge[0]["role"] == sorted(["etth1", "weather", *KEYS])  # 记录键与项键
     assert "## U (1)\n\n- `weather` [art_0001#method_0003-dataset_0002-96]" in out["render"]
     assert out["warnings"] == [
-        {"rule": "unused-input", "where": "inputs[2]", "msg": f"{SOURCE} is not referenced in params or payload"}
+        {"rule": "unused-input", "at": "inputs[2]", "msg": f"{SOURCE} is not referenced in params or payload"}
     ]
 
 
@@ -138,3 +139,11 @@ def test_views_with_artifacts_round_trip_as_noop(store: Store) -> None:
     view["by"] = "claude"
     assert commit_doc(store, dump(view), commit=False)["status"] == "noop"
     assert MATERIAL in dump(view)
+
+
+def test_the_operator_takes_session_and_formed_by_from_the_context(store: Store) -> None:
+    params = {k: v for k, v in EXTRACT.items() if k not in ("op", "session", "formed_by")}
+    ctx = Context(store, AT, session=EXTRACT["session"], formed_by=EXTRACT["formed_by"])
+    out = OPERATORS["Extract"].call(ctx, params)  # 作为工具调用：没有 op，环境信息不在参数中
+    assert not out.is_error
+    assert out.details["status"] == "existing" and out.details["artifact"] == "art_0001"  # 与直接写入的请求相同

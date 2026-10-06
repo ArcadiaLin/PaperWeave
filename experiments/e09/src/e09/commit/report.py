@@ -27,10 +27,11 @@ FIXES = {
     "key-taken": "the record already exists; edit it by id instead of creating it again",
     "material": "check the material path; changing a registered material is not supported yet",
 }
+CONFLICT_FIX = "the database changed after the dry run; read the affected nodes again and resubmit"
 
 
 def plan(prepared: Prepared, reader: Reader) -> dict[str, Any]:
-    """dry_run 的返回：状态、将要做的修改、阻塞项（带候选与改法）与提示。"""
+    """dry_run 的返回：状态、将要做的修改、阻塞项 ``errors``（带候选与改法）与提示 ``warnings``。"""
     if prepared.errors:
         status = "blocked"
     elif not prepared.changeset:
@@ -45,7 +46,7 @@ def plan(prepared: Prepared, reader: Reader) -> dict[str, Any]:
     warnings = [p for p in prepared.problems if p.severity == "warning"]
     described = _describe_candidates(errors + warnings, reader)
     if errors:
-        out["blocking"] = [_problem(p, described) for p in errors]
+        out["errors"] = [_problem(p, described) for p in errors]
     if warnings:
         out["warnings"] = [_problem(p, described) for p in warnings]
     return out
@@ -84,8 +85,7 @@ def conflict(error: ConflictError) -> dict[str, Any]:
     return {
         "graph-result": RESULT_VERSION,
         "status": "conflict",
-        "conflicts": [{"at": c.target, "msg": c.reason} for c in error.conflicts],
-        "fix": "the database changed after the dry run; read the affected nodes again and resubmit",
+        "errors": [{"rule": "conflict", "at": c.target, "msg": c.reason, "fix": CONFLICT_FIX} for c in error.conflicts],
     }
 
 

@@ -34,23 +34,28 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 契约见 [算子契约](../../docs/designs/v2/operators.md)（第 9 节为实现对照）。全部算子经同一个入口调用，请求的 `op`
 是算子名，其余键是它的参数：
 
-    uv run python -m e09 <请求.yml | -> [--no-embed]
+    uv run python -m e09 <请求.yml | -> [--no-embed] [--session 会话 --formed-by 形成者]
     uv run python -m e09 -e '{op: Traverse, start: [method_0028], path: [{rel: EVALUATES, dir: in}]}'
     uv run python -m e09 <文档.yml> --source <来源标签>            # graph-doc：Commit 的 dry_run，输出 graph-plan
     uv run python -m e09 <文档.yml> --source <来源标签> --apply    # 提交，输出 graph-result
+    uv run python -m e09 --describe                               # 全部算子作为工具的定义（JSON），不连库
 
 - 由中间件执行的算子（`operators/db/`）：Search、Resolve、Traverse、ReadEvidence 读取，不写库；Commit 提交 graph-doc，
   也可写成 `{op: Commit, doc, source, apply, message, base, dedup}`。
 - Agent 算子（`operators/agent/`）：Extract、Summarize、Generate、Check、Verify、Filter、MatrixConstruct，每次调用写一个
   Artifact，产生一个提交。文档按内容寻址写到 `data/raw/e09-paper-knowledge/artifacts/`（不进 git），登记为 Material，
   可用 ReadEvidence 读取。MatrixConstruct 由 Agent 填写矩阵，中间件只校验表格结构；Rank 已取消。
+- 给 Agent 用的 pi 配置在 `pi-configs/e09/`：一个扩展脚本注册一个算子，定义取自 `--describe`，执行经本入口。
 - 读视图是一份 graph-doc：`nodes` 原样交回 Commit 为 `noop`，`meta` 是 AccessResult。
 - 连接、查重与向量补算都用 `E09_NEO4J_URI` 所指的库。有数据却没有版本记录的库（如旧写入路径建出的库）一律拒绝。
-  首次提交时建立版本记录、约束、全文索引与向量索引；Agent 算子写入前同样建立。提交后补算向量，向量服务不可用时只给
+  首次提交时建立版本记录、约束、全文索引与向量索引；Agent 算子通过校验、确实写入前同样建立。提交后补算向量，向量服务不可用时只给
   提示，之后用 `make embed` 再补。
 - `--no-embed` 关闭查询向量，写入后也不补算；`--no-dedup` 关闭 Commit 的查重，用于种子这类可信的批量入库。
-- 退出码：0 有结果（可以为空，或写入、重试命中、ready / noop / committed）；1 错误结果（契约错误、没有通过校验、
-  blocked / conflict）；2 库不能使用。
+- 算子的参数（`Operator.parameters`）只含算子自己的参数：不含 `op`（作为工具时工具名就是算子名），也不含 `session`、
+  `formed_by`（调用环境的信息，命令行用 `--session`、`--formed-by` 给出，Agent 算子写入时必需）。
+- 没有完成时一律返回 `{status, errors}`：`status` 为 `rejected`、`blocked` 或 `conflict`，`errors` 每项为 `{rule, at, msg}`。
+- 退出码：0 有结果（可以为空，或写入、重试命中、ready / noop / committed）；1 错误结果（rejected / blocked / conflict）；
+  2 库不能使用。
 
 原先的写入路径（paper-form-v4 / supplement-form-v1 编译、Commit 的种子、论文与增补增量、`make seed` / `make ingest`）
 已删除，最后状态见 tag `e09-legacy-write`。旧模型上的读取算子（Get、Experiments、ReadEvidence）、pi 的工具入口

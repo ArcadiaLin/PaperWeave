@@ -12,6 +12,7 @@ from typing import Any
 
 from ...artifact.write import Output, Problems
 from ...model.refs import RECORD_KEY
+from ..base import STRING, one_or_many
 
 VALUES = ("T", "F", "U")
 
@@ -25,7 +26,7 @@ JUDGMENT = {
     "type": "object",
     "properties": {
         "value": {"enum": list(VALUES)},
-        "basis": {"description": "A reference or a list of references; required for T and F."},
+        "basis": one_or_many(STRING, "A reference or a list of references; required for T and F."),
         "reason": {"type": "string", "description": "Required for U."},
     },
 }

@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...artifact.write import Output, Problems
-from ..base import agent_operator, schema
+from ..base import STRING, agent_operator, schema
 from ._common import (
     JUDGMENT,
     as_list,
@@ -135,7 +135,13 @@ CHECK = agent_operator(
     params=schema(
         {
             "items": {"type": "object", "description": "item key -> reference; at least two"},
-            "pairs": {"description": "all_pairs or a list of [k1, k2]"},
+            "pairs": {
+                "anyOf": [
+                    {"const": "all_pairs"},
+                    {"type": "array", "items": {"type": "array", "items": STRING, "minItems": 2, "maxItems": 2}},
+                ],
+                "description": "all_pairs or a list of [k1, k2]",
+            },
             "dimensions": {
                 "type": "array",
                 "items": schema({"id": {"type": "string"}, "question": {"type": "string"}}),

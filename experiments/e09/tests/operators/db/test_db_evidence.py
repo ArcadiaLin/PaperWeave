@@ -63,7 +63,7 @@ def test_unreadable_references(store: Store, tmp_path: Path) -> None:
 )
 def test_requests_are_checked(store: Store, request_: dict, at: list[str]) -> None:
     out = call(Context(store, AT), request_)
-    assert out.is_error and [p["at"] for p in out.details["problems"]] == at
+    assert out.details["status"] == "rejected" and [p["at"] for p in out.details["errors"]] == at
 
 
 def test_call_dispatches_to_the_operator(store: Store) -> None:

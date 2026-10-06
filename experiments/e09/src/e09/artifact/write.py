@@ -44,7 +44,8 @@ from graph_vc import Changeset, ConflictError, EdgeChange, FileRef, NodeChange
 from ..model.refs import Ref, parse_ref
 from ..model.schema import ARTIFACT, LOCATOR
 from ..query.materials import load_lines, materials
-from ..store.store import Store
+from ..store.database import setup_database
+from ..store.store import ContractError, Store
 from ..yamlfmt import dump
 from .document import Document, compose, data_of, header_of, record_keys
 from .stale import document_text, documents
@@ -56,13 +57,13 @@ PREFIX = "art"
 
 
 class Problems:
-    """调用中的错误：``{rule, where, msg}``，与 Commit 阻塞项的形状相同。"""
+    """调用中的错误：``{rule, at, msg}``，与 Commit 阻塞项的形状相同。"""
 
     def __init__(self) -> None:
         self.items: list[dict[str, str]] = []
 
-    def add(self, rule: str, where: str, msg: str) -> None:
-        self.items.append({"rule": rule, "where": where, "msg": msg})
+    def add(self, rule: str, at: str, msg: str) -> None:
+        self.items.append({"rule": rule, "at": at, "msg": msg})
 
     def __bool__(self) -> bool:
         return bool(self.items)
@@ -82,12 +83,8 @@ Validate = Callable[[Mapping[str, Any], Mapping[str, Any], Problems], Output]
 """一个 Agent 算子的校验：``(params, payload, problems) -> Output``，问题记入 ``problems``。"""
 
 
-class OperatorError(ValueError):
-    """调用没有通过校验，什么也没有写入。``errors`` 是 ``[{rule, where, msg}]``。"""
-
-    def __init__(self, errors: list[dict[str, str]]):
-        super().__init__("; ".join(f"{e['where']}: {e['msg']}" for e in errors))
-        self.errors = errors
+class OperatorError(ContractError):
+    """Agent 算子的调用没有通过校验，或提交时冲突（``status`` 为 ``conflict``），什么也没有写入。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +128,7 @@ def write_artifact(
     if found:
         return _existing(store, found[0]["id"], warnings, output)
 
+    setup_database(store.graph, store.driver, database=store.database)  # 通过校验、确实要写入时才建约束与索引
     title = request.get("title") or output.title
     nodes_used = [i.spelling for i in inputs]
     document = compose(title, nodes_used, request["abs"].strip(), output.body, output.data)
@@ -157,14 +155,14 @@ def write_artifact(
             meta={"artifact": art_id, "session": request["session"]},
         )
     except ConflictError as exc:  # 校验之后有对象被删除或改动
-        raise OperatorError([{"rule": "conflict", "where": "inputs", "msg": str(exc)}]) from exc
+        raise OperatorError([{"rule": "conflict", "at": "inputs", "msg": str(exc)}], status="conflict") from exc
 
     if sync is not None:
         try:
             sync()
         except (httpx.HTTPError, ValueError) as exc:
             msg = f"embeddings not synced ({exc}); run make embed"
-            warnings.append({"rule": "embedding", "where": art_id, "msg": msg})
+            warnings.append({"rule": "embedding", "at": art_id, "msg": msg})
     return _result("created", art_id, record.id, document.path, document.material_id, warnings, output)
 
 
@@ -271,12 +269,12 @@ def _resolve(
                 inputs.append(Input(ref, material["owner"], spell(ref.text) or ref.text, material["id"]))
 
     accepted = {i.spelling for i in inputs} | {i.ref.text for i in inputs}
-    for where, text in output.refs:
+    for at, text in output.refs:
         spelled = spell(text)
         if spelled is None:
-            problems.add("reference", where, f"not a reference: {text!r}")
+            problems.add("reference", at, f"not a reference: {text!r}")
         elif text not in accepted and spelled not in accepted and not _failed(text, texts, spell):
-            problems.add("reference", where, f"{text} is not among inputs")
+            problems.add("reference", at, f"{text} is not among inputs")
     return inputs, spell
 
 
@@ -297,7 +295,7 @@ def _unused(inputs: list[Input], output: Output, spell: Callable[[str], str | No
     """``inputs`` 中没有在参数或内容里出现的引用：不阻塞，提示。"""
     mentioned = {spell(text) for _, text in output.refs}
     return [
-        {"rule": "unused-input", "where": f"inputs[{n}]", "msg": f"{i.ref.text} is not referenced in params or payload"}
+        {"rule": "unused-input", "at": f"inputs[{n}]", "msg": f"{i.ref.text} is not referenced in params or payload"}
         for n, i in enumerate(inputs)
         if i.spelling not in mentioned and i.ref.text not in mentioned
     ]

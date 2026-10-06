@@ -80,6 +80,12 @@ def test_conflict_result() -> None:
     assert conflict(error) == {
         "graph-result": "v0.1",
         "status": "conflict",
-        "conflicts": [{"at": "method_0001", "msg": "property name differs"}],
-        "fix": "the database changed after the dry run; read the affected nodes again and resubmit",
+        "errors": [
+            {
+                "rule": "conflict",
+                "at": "method_0001",
+                "msg": "property name differs",
+                "fix": "the database changed after the dry run; read the affected nodes again and resubmit",
+            }
+        ],
     }

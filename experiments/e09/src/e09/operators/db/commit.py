@@ -1,11 +1,11 @@
 """Commit：提交一份 graph-doc（docs/experiments/e09/operators/commit.md）。
 
-    {op: Commit, doc: <graph-doc>, source, apply?: false, message?, base?, dedup?: true}
+    Commit(doc: <graph-doc>, source, apply?: false, message?, base?, dedup?: true)
       -> graph-plan（dry_run，或没有变化）| graph-result（提交后）
 
 不加 ``apply`` 时只做 dry_run。写入管线在 :mod:`e09.commit`：解析 → 翻译 → 求差 → 写入后检查 →（apply 时）分配
 id 并经 graph-vc 提交。查重（Resolve）与向量补算用 ``E09_NEO4J_URI`` 所指的同一个库。没有版本记录的旧库一律拒绝。
-``status`` 为 ``blocked`` 或 ``conflict`` 时是错误结果。
+``status`` 为 ``blocked`` 或 ``conflict`` 时是错误结果，``errors`` 列出阻塞项或冲突。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from ...commit.submit import apply, prepare
 from ...commit.translate import Context as CommitContext
 from ...store.database import check_versioned, setup_database
 from ...yamlfmt import dump
-from ..base import Context, Operator, params_of, schema
+from ..base import STRING, Context, Operator, params_of, schema
 
 
 def run(
@@ -70,15 +70,14 @@ def run(
 
 PARAMETERS = schema(
     {
-        "op": {"const": "Commit"},
-        "doc": {"description": "The graph-doc, as YAML text or a mapping"},
+        "doc": {"anyOf": [STRING, {"type": "object"}], "description": "The graph-doc, as YAML text or a mapping"},
         "source": {"type": "string", "description": "Source label, recorded in the commit and on new name keys"},
         "apply": {"type": "boolean", "description": "Commit; without it only a dry run"},
         "message": {"type": "string"},
         "base": {"type": "string", "description": "The commit the writer's view was read at; only recorded"},
         "dedup": {"type": "boolean", "description": "Check new objects against stored ones (default true)"},
     },
-    ["op", "doc", "source"],
+    ["doc", "source"],
 )
 
 

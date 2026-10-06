@@ -25,7 +25,7 @@ from ...query.fusion import POOL, RRF_K, fuse, tokens
 from ...query.view import render, source_refs_of
 from ...store.embedding import EMBED_MODEL, VECTOR_INDEXES
 from ...store.store import ContractError, Store
-from ..base import db_operator, schema
+from ..base import STRING, TERMS, db_operator, one_or_many, schema
 
 TYPES = ("Entity", "Concept", "Content", ARTIFACT)
 QUERY_FIELDS = {
@@ -327,14 +327,17 @@ SEARCH = db_operator(
     parameters=schema(
         {
             "type": {"enum": list(TYPES)},
-            "query": {"description": "A string (text) or {identifier?, mention?, text?}"},
-            "kinds": {"description": "A kind or a list of kinds; not for Artifact"},
+            "query": {"anyOf": [STRING, TERMS], "description": "Text, or {identifier?, mention?, text?}"},
+            "kinds": one_or_many(STRING, "A kind or a list of kinds; not for Artifact"),
             "where": {
                 "type": "object",
                 "description": "Structural conditions; for Artifact: op, used, formed_by, session",
             },
             "expand": {"type": "object"},
-            "scope": {"description": "global, or paper ids"},
+            "scope": {
+                "anyOf": [{"const": "global"}, {"type": "array", "items": STRING}],
+                "description": "global, or paper ids (Content only)",
+            },
             "budget": {"type": "integer"},
             "continuation": {"type": "integer"},
         },

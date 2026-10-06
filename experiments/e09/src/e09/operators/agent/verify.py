@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from ...artifact.write import Output, Problems
-from ..base import agent_operator, schema
+from ..base import STRING, TEXT, agent_operator, schema
 from ._common import (
     JUDGMENT,
     check_keys,
@@ -58,7 +58,7 @@ VERIFY = agent_operator(
         "Judge whether a claim holds under the given evidence (T supported, F refuted, U insufficient) and state "
         "the conditions under which it holds. Finding no support is U, not F."
     ),
-    params=schema({"claim": {"description": "A reference or {text}"}}, ["claim"]),
+    params=schema({"claim": {"anyOf": [STRING, TEXT], "description": "A reference or {text}"}}, ["claim"]),
     payload=schema(
         {**JUDGMENT["properties"], "conditions": {"type": "string"}},
         ["value"],

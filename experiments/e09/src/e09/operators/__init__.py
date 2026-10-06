@@ -10,18 +10,17 @@ from collections.abc import Mapping
 from typing import Any
 
 from .agent import AGENT_OPERATORS
-from .base import Context, Operator, Result
+from .base import Context, Operator, Result, rejected
 from .db import DB_OPERATORS
 
 OPERATORS: dict[str, Operator] = {**DB_OPERATORS, **AGENT_OPERATORS}
 
 
 def call(ctx: Context, request: Mapping[str, Any]) -> Result:
-    """按请求的 ``op`` 找到算子并执行；请求不是映射或 ``op`` 不认识时返回契约错误。"""
+    """按请求的 ``op`` 找到算子并执行；请求不是映射或 ``op`` 不认识时返回 ``rejected``。"""
     op = request.get("op") if isinstance(request, Mapping) else None
     if op not in OPERATORS:
-        problems = [{"at": "op", "msg": f"one of {list(OPERATORS)}"}]
-        return Result({"error": "contract", "problems": problems}, is_error=True)
+        return rejected([{"rule": "format", "at": "op", "msg": f"one of {list(OPERATORS)}"}])
     return OPERATORS[op].call(ctx, request)
 
 

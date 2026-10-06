@@ -19,7 +19,7 @@ from typing import Any
 from ...model.schema import LOCATOR
 from ...query.materials import load_lines, materials
 from ...store.store import ContractError, Store
-from ..base import db_operator, schema
+from ..base import STRING, db_operator, one_or_many, schema
 
 VERSION = "v0.1"
 
@@ -83,7 +83,7 @@ READ_EVIDENCE = db_operator(
         "or artifact documents. Each item is available, missing or error; available text carries line numbers."
     ),
     parameters=schema(
-        {"source_refs": {"description": "A source reference or a list of them"}},
+        {"source_refs": one_or_many(STRING, "A source reference or a list of them")},
         ["source_refs"],
     ),
     run=read_evidence,

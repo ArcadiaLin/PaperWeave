@@ -122,7 +122,7 @@ id 由中间件生成。Agent 读得到 id，但不会编造 id：新节点一�
 ```text
 graph-doc ──dry_run──▶ graph-plan ──(无阻塞项)──▶ apply ──▶ graph-result
     ▲                      │
-    └─── Agent 按 blocking 改文档后重交 ───┘
+    └─── Agent 按 errors 改文档后重交 ───┘
 ```
 
 | 调用 | 输入 | 职责 | 返回 |
@@ -138,14 +138,14 @@ graph-doc ──dry_run──▶ graph-plan ──(无阻塞项)──▶ apply 
 | --- | --- |
 | `status` | `ready`、`blocked` 或 `noop` |
 | `changes` | `create` 与 `delete` 列出模型节点；`update` 按节点列出改动的字段与关系键，改了 kind 记为 `kind`，增删了名称或别名记为 `names`；`edges` 是边的新建、修改、删除数；另有 `names`（NameKey 的增删数）与 `materials`（新登记的材料路径） |
-| `blocking` | 每项为 `{rule, at, msg}`，查重等需要判断的另带 `candidates`（每个候选给出 `ref`、`kind`、`name` 或 `text`，桩节点标 `stub`，查重命中的通道列在 `channels`），常见规则另带改法提示 `fix`。有任何一项时 apply 拒绝整批 |
+| `errors` | 阻塞项，每项为 `{rule, at, msg}`，查重等需要判断的另带 `candidates`（每个候选给出 `ref`、`kind`、`name` 或 `text`，桩节点标 `stub`，查重命中的通道列在 `channels`），常见规则另带改法提示 `fix`。有任何一项时 apply 拒绝整批 |
 | `warnings` | 不阻塞的提示：查重通道执行失败、删除的影响面、开放类型上的模型外属性 |
 
 **graph-result**
 
 | 键 | 内容 |
 | --- | --- |
-| `status` | `committed`；提交时发现冲突则为 `conflict`，另给 `conflicts` 与 `fix` |
+| `status` | `committed`；提交时发现冲突则为 `conflict`，`errors` 列出不一致项（`rule: conflict`，带改法 `fix`） |
 | `commit` | 本次写入产生的 Commit id（§8） |
 | `ids` | `$` 引用到新 id 的映射 |
 | `counts` | 节点与边各自的新建、修改、删除数，含 NameKey 与 Material |
@@ -346,7 +346,7 @@ nodes:
 ```yaml
 graph-plan: v0.1
 status: blocked                                       # ready | blocked | noop
-blocking:
+errors:
   - rule: identifier-taken
     at: nodes.$paper.identifiers[0]
     msg: arxiv:2211.14730 already identifies

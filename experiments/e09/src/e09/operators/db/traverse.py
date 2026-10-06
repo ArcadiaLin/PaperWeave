@@ -27,7 +27,7 @@ from ...model.schema import ARTIFACT, DERIVED_FIELDS, FAMILY, TRAVERSABLE
 from ...query.conditions import compile_where
 from ...query.view import render, source_refs_of
 from ...store.store import ContractError, Store
-from ..base import db_operator, schema
+from ..base import STRING, db_operator, one_or_many, schema
 
 TRANSITIVE = frozenset({"BROADER", "PART_OF", "HAS_PART", "DERIVED_FROM"})
 NODE_KINDS = frozenset(FAMILY) | {ARTIFACT}
@@ -301,7 +301,7 @@ TRAVERSE = db_operator(
     ),
     parameters=schema(
         {
-            "start": {"description": "An id or a list of ids"},
+            "start": one_or_many(STRING, "An id or a list of ids"),
             "path": {"type": "array", "items": {"type": "object"}},
             "budget": {"type": "integer"},
             "continuation": {"type": "integer"},

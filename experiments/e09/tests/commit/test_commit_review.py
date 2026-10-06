@@ -33,7 +33,7 @@ def test_new_concepts_with_unjudged_candidates_are_blocked(graph: MemoryGraph) -
 
     out = plan(prepared, MemoryReader(graph.state))
     assert out["status"] == "blocked"
-    assert out["blocking"] == [
+    assert out["errors"] == [
         {
             "rule": "dedup",
             "at": "nodes.$dlinear",

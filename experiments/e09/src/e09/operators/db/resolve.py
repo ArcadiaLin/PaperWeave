@@ -10,7 +10,7 @@ from typing import Any
 
 from ...query.resolve import resolve
 from ...store.store import ContractError, Store
-from ..base import db_operator, schema
+from ..base import STRING, TERMS, db_operator, schema
 
 
 def run(
@@ -33,7 +33,7 @@ RESOLVE = db_operator(
     ),
     parameters=schema(
         {
-            "query": {"description": "A mention, or {identifier?, mention?, text?}"},
+            "query": {"anyOf": [STRING, TERMS], "description": "A mention, or {identifier?, mention?, text?}"},
             "kind": {"type": "string"},
             "scope": {"type": "string"},
             "mode": {"enum": ["read", "write"]},

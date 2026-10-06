@@ -151,4 +151,4 @@ def write_material(root: Path, path: str, lines: int = 60) -> None:
 
 def problems(exc: Any) -> list[str]:
     """契约错误中出错的参数位置。"""
-    return [p["at"] for p in exc.value.problems]
+    return [p["at"] for p in exc.value.errors]

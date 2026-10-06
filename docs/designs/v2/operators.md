@@ -75,10 +75,10 @@ AccessResult = {query, items, bindings, source_refs, missing, coverage, continua
 ### 2.4 预算、错误与会话
 
 - **预算**是一次调用返回的主体结果数上限；截断必须在 `coverage` 中可见，续取时传回 `continuation`，其余参数不变。
-- **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。
+- **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。所有算子没有完成时的返回同形：`{status, errors}`，`status` 为 `rejected`（请求没有被执行，什么也没有写入）、`blocked`（`Commit` 的阻塞项）或 `conflict`（提交时与并发写入冲突），`errors` 的每一项为 `{rule, at, msg}`，`at` 指向出错的参数或节点，`Commit` 的阻塞项另带 `candidates` 与 `fix`。请求的顶层形状不对（未知参数、缺少必填参数）记为 `format`，参数的取值不对记为 `schema`。
 - **数据缺失**（引用不在库中、关系无记录）返回空集合与覆盖信息，不当作错误。
 - **执行失败**（向量服务不可用、索引缺失）记入 `coverage` 的通道状态；因失败而没有结果时不当作空结果。
-- **会话**：Agent 算子带会话标识 `session`，记在 Artifact 上，用于按会话追溯产物。
+- **会话**：Agent 算子的会话标识 `session` 与形成者 `formed_by` 记在 Artifact 上，用于按会话追溯产物。二者是调用环境的信息，由调用方（工具入口或命令行的 `--session`、`--formed-by`）给出，不是算子参数；算子作为工具时，参数中也没有 `op`，工具名就是算子名。
 
 ## 3. 中间件算子
 
@@ -221,8 +221,9 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 ### 4.1 共同契约
 
 ```text
-<Op>(title?, abs, inputs, params, payload, session, formed_by)
-  -> {status: created | existing, artifact, commit, document, warnings, stats?, render} | {errors}
+<Op>(title?, abs, inputs, params, payload)        # 调用环境另给 session、formed_by
+  -> {status: created | existing, artifact, commit, document, warnings, stats?, render}
+   | {status: rejected | conflict, errors}
 ```
 
 | 字段 | 说明 |
@@ -232,7 +233,7 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 | `inputs` | 用到的对象引用、来源引用、Artifact 或记录引用；每项写成一条 `USED` 边（第 5.2 节） |
 | `params` | 各算子的声明参数，如抽取的 schema、检查维度、矩阵的行与列 |
 | `payload` | Agent 生成的内容：记录、文本、逐项判断或矩阵的格子 |
-| `session`、`formed_by` | 会话标识与形成者 |
+| `session`、`formed_by` | 会话标识与形成者，由调用环境给出（第 2.4 节） |
 
 `inputs` 必填。列入哪些输入、是否先读原文，由 Agent 的使用指南约定（实际用到的才列入，数值与判断应来自读过的原文或记录）；中间件不追踪 Agent 读过什么。
 
@@ -244,7 +245,7 @@ graph-doc 可以引用 Artifact：Observation 的 `ABOUT` 可指向 Artifact，`
 
 **返回：** `status` 为 `created`，或相同调用的重试返回 `existing`（第 5.4 节，此时 `commit` 为空）；`artifact` 为 Artifact 的 id；`commit` 为本次写入的提交 id；`document` 为产物文档的路径与 `material_ref`；`stats` 为该算子的统计（目前只有 `Generate`）；`render` 是文档正文（不含头部），可以直接放进回答，引用按第 2.1 节的方括号写法；`warnings` 为不阻塞的提示：`unused-input`（某个输入没有在 `params` 与 `payload` 中被引用）、`embedding`（提交后补算向量失败，提交保留）。
 
-**错误**的形状与 `Commit` 的阻塞项相同：`{rule, where, msg}`，`rule` 为 `format`（请求的形状）、`schema`（算子参数与内容）、`reference`（引用不在库中或不属于 `inputs`）、`judgment`（判断的取值、依据与覆盖）、`citation`（`Summarize` 的段落缺少引用）或 `conflict`（提交时与并发写入冲突）。命令行入口为 `python -m e09`（第 9 节）。
+**错误**的形状与 `Commit` 的阻塞项相同：`{rule, at, msg}`（第 2.4 节），`rule` 为 `format`（请求的形状）、`schema`（算子参数与内容）、`reference`（引用不在库中或不属于 `inputs`）、`judgment`（判断的取值、依据与覆盖）、`citation`（`Summarize` 的段落缺少引用）或 `conflict`（提交时与并发写入冲突）。命令行入口为 `python -m e09`（第 9 节）。
 
 **判断的取值：** `T` 表示在声明的条件与依据下成立；`F` 表示有依据判断不成立；`U` 表示依据不足、相互冲突或条件含义不明。`T` 与 `F` 必须给出 `basis`（属于 `inputs` 的引用），`U` 必须给出 `reason`。执行中断与格式错误是 `errors`，不能写成 `U`。
 
