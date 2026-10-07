@@ -8,7 +8,9 @@
   取交集）；不能成立是契约错误，例如从 Method 沿出边走 ``EVALUATES``。对称关系 ``OVERLAPS_WITH`` 忽略方向。
 - ``depth`` 只用于传递性关系（``BROADER``、``PART_OF``、``HAS_PART``、``DERIVED_FROM``），取 1 到 ``depth`` 步的
   全部路径，同一路径不重复走同一条边。``kinds`` 与 ``where`` 约束这一跳的终点，``edge`` 约束这一跳走过的每条边。
-- 预算按路径计。返回读视图：``nodes`` 是本页路径上的全部节点（起点、中间节点与终点），``meta.items`` 是终点，
+- 预算按路径计，结果另有容量上限（与 Search 相同，见 :mod:`e09.query.excerpts`）：对象视图要原样交回 Commit，
+  不能截断字段，所以放不下时从本页末尾去掉路径，续取位置随之前移，``meta.size`` 给出上限与实际大小。
+- 返回读视图：``nodes`` 是本页路径上的全部节点（起点、中间节点与终点），``meta.items`` 是终点，
   ``meta.bindings`` 是路径，如 ``[method_0028, <-EVALUATES-, exp_0001, -USES->, dataset_0006]``。边上的属性在
   起点一侧节点的出边里。
 
@@ -18,14 +20,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from ...artifact.stale import readonly
 from ...model.schema import ARTIFACT, DERIVED_FIELDS, FAMILY, TRAVERSABLE
 from ...query.conditions import compile_where
-from ...query.view import render, source_refs_of
+from ...query.excerpts import LIMIT
+from ...query.view import dump, render, source_refs_of
 from ...store.store import ContractError, Store
 from ..base import STRINGS, db_operator, schema
 
@@ -114,31 +117,62 @@ def traverse(
 
     paths.sort(key=lambda p: (p.start, p.steps))
     page = paths[offset : offset + budget]
-    more = offset + budget < len(paths)
-    items = list(dict.fromkeys(p.end for p in page))
     shown = list(dict.fromkeys(n for p in page for n in p.nodes()))
     state = store.graph.local_state(shown)
     artifacts = readonly(store, [n for n in shown if ARTIFACT in state.nodes[n].labels])
-    coverage = {
-        "start": len(starts),
-        "hops": len(hops),
-        "budget": budget,
-        "matched": len(paths),
-        "returned": len(page),
-        "truncated": more,
-        "snapshot": store.snapshot(),
-    }
-    meta = {
-        "query": request,
-        "items": items,
-        "bindings": [list(p.steps) for p in page],
-        "source_refs": list(dict.fromkeys(r for i in items for r in source_refs_of(i, state))),
-        "missing": missing,
-        "coverage": coverage,
-        "continuation": offset + budget if more else None,
-        "diagnostics": {},
-    }
-    return render(state, shown, meta, artifacts)
+    snapshot = store.snapshot()
+
+    def view(count: int) -> dict[str, Any]:
+        """本页前 ``count`` 条路径的读视图。"""
+        kept = page[:count]
+        end = offset + count
+        more = end < len(paths)
+        items = list(dict.fromkeys(p.end for p in kept))
+        coverage = {
+            "start": len(starts),
+            "hops": len(hops),
+            "budget": budget,
+            "matched": len(paths),
+            "returned": count,
+            "truncated": more,
+            "snapshot": snapshot,
+        }
+        meta = {
+            "query": request,
+            "items": items,
+            "bindings": [list(p.steps) for p in kept],
+            "source_refs": list(dict.fromkeys(r for i in items for r in source_refs_of(i, state))),
+            "missing": missing,
+            "coverage": coverage,
+            "continuation": end if more else None,
+            "diagnostics": {},
+            "size": {"limit": LIMIT, "used": LIMIT},  # 占位：位数不少于实际
+        }
+        nodes = list(dict.fromkeys(n for p in kept for n in p.nodes()))
+        return render(state, nodes, meta, artifacts)
+
+    out = view(_fit(view, len(page)))
+    for _ in range(2):  # 写入 used 本身后的大小；第二次计入位数的变化
+        out["meta"]["size"]["used"] = _size(out)
+    return out
+
+
+def _fit(view: Callable[[int], dict[str, Any]], total: int) -> int:
+    """放得下的最多路径数（视图大小随路径数单调不减，二分查找）；一条也放不下时仍返回一条。"""
+    if total == 0 or _size(view(total)) <= LIMIT:
+        return total
+    low, high = 1, total - 1  # view(low) 不一定放得下；high 之后的都放不下
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _size(view(mid)) <= LIMIT:
+            low = mid
+        else:
+            high = mid - 1
+    return low
+
+
+def _size(view: dict[str, Any]) -> int:
+    return len(dump(view).encode("utf-8"))
 
 
 # ── 参数 ──────────────────────────────────────────────────────────────

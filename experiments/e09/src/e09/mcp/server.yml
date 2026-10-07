@@ -48,12 +48,13 @@ tools:
 
       To use a name from the question (a method, dataset or task) in where, first turn it into an id with Resolve.
     parameters:
-      type: One type per call.
+      type: "One of Entity, Concept, Content, Artifact. A kind such as Experiment or Method is not a type: write type: Content, kinds: [Experiment]."
       query: "{text?, mention?, identifier?}: text is matched by full text and vectors; mention matches names (Entity, Concept); identifier is exact (arxiv:2205.13504, doi:..., url:...; Entity only). Omit to list everything that meets where, in id order."
       kinds: List of kinds of this type, such as [Experiment]; omit for all kinds. Not for Artifact.
       where: >-
         Structural conditions, all of which must hold; a list of ids in one condition means any of them.
-        Values are ids. Entity: part_of, for_task (Dataset, Benchmark), stub. Concept: broader, stub.
+        Values are ids (or lists of ids), not objects. Example for type Content, kinds [Experiment]:
+        {evaluates: <method id>, role: target, uses: <dataset id>}. Entity: part_of, for_task (Dataset, Benchmark), stub. Concept: broader, stub.
         Content: about, from (paper id), formed_by; Contribution: stated_by (paper | agent); Claim: supported_by;
         Experiment: evaluates (with role: target | baseline), uses (evaluation data), on_task, evaluated_on.
         Artifact: op (Extract, Summarize, Generate, Check, Verify, Filter, MatrixConstruct), used (an object id),
@@ -68,10 +69,13 @@ tools:
     description: >-
       Turn a name, identifier or description into the id of a stored Entity or Concept of one kind, before using
       it in Search where, Traverse start or Commit. Matching runs in order: exact identifier, exact name (including
-      aliases), then semantic candidates. status: resolved (refs is the match), ambiguous (several exact matches),
-      candidates (only similar objects, refs in rank order; not an identity: read them with Traverse, empty path,
-      before using one, and record the decision with Filter when it matters), none, or unprocessed (a matching
-      channel failed; not the same as none). None does not prove the object is absent from the papers.
+      aliases), then semantic candidates. Each entry of refs is {id, kind, name, aliases?, about?}, where about is the
+      start of its description or definition. status: resolved (refs is the match), ambiguous (several exact
+      matches), candidates (only similar objects, refs in rank order; not an identity: compare names and about, read
+      them with Traverse, empty path, when unsure, and record the decision with Filter when it matters), none, or
+      unprocessed (a matching channel failed, see failed; not the same as none). similar lists near objects found
+      besides the match (write mode, or an ambiguous read). None does not prove the object is absent from the
+      papers.
     parameters:
       query: "{mention?, identifier?, text?}: mention is the name as written; identifier like arxiv:2205.13504; text a description."
       kind: One kind, such as Method, Dataset, Task or Paper.
@@ -92,7 +96,7 @@ tools:
       - USED: Artifact -> what it used; walk USED with dir in from an object to find the artifacts that used it.
       Example: the experiments that evaluate a method: start [<method id>], path [{rel: EVALUATES, dir: in}].
 
-      Objects come back whole, so results grow fast: keep budget small (3-5) when the paths end at experiments or claims, and page with continuation.
+      Objects come back whole and are never cut. A page holds at most budget paths and at most 16 KB: when the objects do not fit, the last paths move to the next page, so meta.coverage.returned can be below budget; meta.continuation is then set, and meta.size gives the limit and the size used.
     parameters:
       start: List of ids to start from (from Search, Resolve or an earlier Traverse).
       path: "0-3 hops; each hop is {rel, dir: out | in | both, kinds?, where?, edge?, depth?}. kinds and where (as in Search) restrict the hop's end objects, edge restricts edge properties such as {role: target}, depth 1-3 repeats BROADER, PART_OF, HAS_PART or DERIVED_FROM. An empty path reads the start objects."
@@ -114,7 +118,7 @@ tools:
     description: |-
       Change the stored knowledge: create, edit or delete objects and their relations by submitting a graph-doc, a YAML text describing the wanted state of some nodes. Artifacts cannot be written here; use the artifact tools.
 
-      Skeleton:
+      The doc parameter is the YAML text below and holds only graph-doc, by, confirm and nodes; message, source, base, apply and dedup are separate parameters of this tool, not keys of the doc.
         graph-doc: v0.1
         by: <your model name>
         confirm: {$ref: {distinct_from: [ids]}}   # optional, see duplicates below
@@ -124,6 +128,12 @@ tools:
           obs_0002: null                                  # null deletes the node and all its edges
 
       Field spelling decides meaning: lowercase keys are properties; UPPERCASE keys are outgoing relations; keys starting with _ are read-only (copy them back unchanged or leave them out). A property you omit stays as it is, null clears it. A relation key lists the complete set of that relation type: edges you leave out of the list are deleted, so to add one edge, read the node with Traverse (empty path) and send back the whole list plus the new edge; omitting the key leaves the relation untouched. A list item is an id or $ref, or {to: ref, <edge properties>}. Refer to existing objects only by id (use Resolve for names), never invent ids.
+
+      What each Content kind is for:
+      - Claim: a statement a paper makes, FROM that one paper (with locators), SUPPORTED_BY its experiments or observations.
+      - Experiment: an experiment a paper reports (one table or figure setting), FROM that paper.
+      - Contribution: what a paper contributes; stated_by paper when the paper says so, agent when it is your assessment.
+      - Observation: your own finding, such as a comparison across papers or a judgment about comparability. It is ABOUT the objects it concerns and comes FROM the artifacts (your Check, Extract or MatrixConstruct results) or paper lines it rests on. Do not record your conclusions as a Claim of some paper.
 
       Kinds and fields (* required unless stub: true):
       - Paper: name*, description*, identifiers [arxiv:..., doi:..., url:...], year, material (path of the paper's Markdown file, relative to the store's material root, as other papers' material shows), aliases, note

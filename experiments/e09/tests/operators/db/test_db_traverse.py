@@ -6,6 +6,7 @@ import pytest
 from conftest import problems
 
 from e09.operators.db.traverse import traverse
+from e09.query.view import dump
 from e09.store import ContractError, Store
 
 
@@ -48,6 +49,26 @@ def test_budget_counts_paths(store: Store) -> None:
     assert first["meta"]["items"] == ["exp_0001"] and first["meta"]["coverage"]["matched"] == 2
     rest = traverse(store, ["paper_0001"], [{"rel": "FROM", "dir": "in"}], budget=1, continuation=1)
     assert rest["meta"]["items"] == ["exp_0002"] and rest["meta"]["continuation"] is None
+
+
+def test_paths_that_do_not_fit_the_size_limit_move_to_the_next_page(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = [{"rel": "EVALUATES", "dir": "in"}, {"rel": "USES", "dir": "out"}]
+    full = traverse(store, ["method_0003"], path)
+    assert full["meta"]["continuation"] is None and full["meta"]["size"]["used"] == len(dump(full).encode())
+
+    monkeypatch.setattr("e09.operators.db.traverse.LIMIT", full["meta"]["size"]["used"] - 20)
+    first = traverse(store, ["method_0003"], path)
+    returned = first["meta"]["coverage"]["returned"]
+    assert 1 <= returned < 3 and first["meta"]["continuation"] == returned and first["meta"]["coverage"]["truncated"]
+    assert first["meta"]["size"]["used"] <= first["meta"]["size"]["limit"]
+    assert set(first["nodes"]) == {n for b in first["meta"]["bindings"] for n in b[::2]}  # 节点随路径去掉
+    rest = traverse(store, ["method_0003"], path, continuation=returned)
+    assert first["meta"]["bindings"] + rest["meta"]["bindings"] == full["meta"]["bindings"]
+
+    monkeypatch.setattr("e09.operators.db.traverse.LIMIT", 1)  # 一条也放不下时仍返回一条
+    assert traverse(store, ["method_0003"], path)["meta"]["coverage"]["returned"] == 1
 
 
 def test_a_missing_start_is_data_not_an_error(store: Store) -> None:

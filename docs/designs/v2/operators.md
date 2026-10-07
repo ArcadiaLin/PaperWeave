@@ -75,6 +75,7 @@ AccessResult = {query, items, bindings, source_refs, missing, coverage, continua
 ### 2.4 预算、错误与会话
 
 - **预算**是一次调用返回的主体结果数上限；截断必须可见（`Traverse` 在 `coverage` 中，`Search` 为非空的 `continuation`），续取时传回 `continuation`，其余参数不变。
+- **容量。** MCP 客户端会截断过长的工具结果（pi 为 20 KB），所以 `Search` 与 `Traverse` 的结果另有 16 KB 的容量上限，`meta.size` 给出上限与实际大小。`Search` 截短摘录（第 3.1 节）；`Traverse` 的对象视图要原样交回 `Commit`，不截断字段，放不下时从本页末尾去掉路径，续取位置随之前移。
 - **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。所有算子没有完成时的返回同形：`{status, errors}`，`status` 为 `rejected`（请求没有被执行，什么也没有写入）、`blocked`（`Commit` 的阻塞项）或 `conflict`（提交时与并发写入冲突），`errors` 的每一项为 `{rule, at, msg}`，`at` 指向出错的参数或节点，`Commit` 的阻塞项另带 `candidates` 与 `fix`。请求的顶层形状不对（未知参数、缺少必填参数）记为 `format`，参数的取值不对记为 `schema`。
 - **数据缺失**（引用不在库中、关系无记录）返回空集合与覆盖信息，不当作错误。
 - **执行失败**（向量服务不可用、索引缺失）记入通道状态（`Search` 为 `meta.failed`）；因失败而没有结果时不当作空结果。
@@ -157,13 +158,15 @@ Search(type, query?, kinds?, where={}, expand={}, scope="global", budget, contin
 
 ```text
 Resolve(query={identifier?, mention?, text?}, kind, scope="global", mode=read | write)
-  -> {stage: id | alias | semantic, status: resolved | ambiguous | candidates | none | unprocessed,
-      refs, match_trace, states, coverage, execution: ok | partial | error}
+  -> {status: resolved | ambiguous | candidates | none | unprocessed, refs, similar?, issues?, failed?}
+ref = {id, kind, name, aliases?, about?}
 ```
+
+**输出：** 解析视图。`refs` 的每一项带名称、别名与说明的开头（`about`，description 或 definition 的前 200 字节），供 Agent 判断候选是不是它要找的对象，完整字段用 `Traverse` 读取；`similar` 是精确命中以外的语义近邻（write 模式的查重、read 模式 ambiguous 时）；`issues` 是标识与名称冲突等数据问题；`failed` 是执行失败的通道。匹配过程（各阶段的键与命中、各通道的名次与融合分、`states`、`coverage`）写入日志 `e09.resolve`；`Commit` 的查重直接使用这份完整结果。
 
 - **只解析 Entity 与 Concept。** Content 与 Artifact 没有称呼，用 `Search` 定位。
 - **三级解析：** 已注册标识（唯一命名空间单个命中即 resolved，非唯一命名空间只缩小候选）→ NameKey 精确键（active 键唯一命中即 resolved）→ 名称词面、文本、向量三通道按 RRF 融合的语义候选。标识与名称同时给出时取交集；名称命中了对象而交集为空时记 `resolution=conflicting`。
-- **mode：** read 模式前两级 resolved 即停止；write 模式仍跑语义查重，近邻记入 `match_trace`。
+- **mode：** read 模式前两级 resolved 即停止；write 模式仍跑语义查重，近邻在 `similar` 中。
 - **不设阈值。** 库中没有的对象通常以 `candidates` 返回；"库中没有"由 Agent 对候选逐个否定（`Filter`，条件为同一对象）得出。因执行失败而没有引用时为 `unprocessed`，不当作 `none`。
 
 | 返回 | 下游处理 |
@@ -200,7 +203,7 @@ hop = {rel, dir: out | in | both, kinds?, where?, edge?, depth?: 1–3}
 
 **校验：** 每一跳按图模型的端点表（[Graph Model V2](./graph_model_v2.md) §6）检查起点类型、关系、方向与终点类型能否成立，不成立是契约错误，例如从 Method 出发沿出边走 `EVALUATES`。
 
-**输出：** 读视图（第 2.3 节）。`items` 为最后一跳的终点（去重）；`nodes` 为本页路径上的全部节点；`bindings` 为每条路径，写成节点与关系交替的列表，关系带方向（`-REL->` 或 `<-REL-`）。边上属性（`role`、`description`、`stated_by`、`locators` 等）在起点一侧节点的出边里，原样给出。正反关系保留真实方向，不推导传递关系。预算按路径计，截断时报告已见数量。
+**输出：** 读视图（第 2.3 节）。`items` 为最后一跳的终点（去重）；`nodes` 为本页路径上的全部节点；`bindings` 为每条路径，写成节点与关系交替的列表，关系带方向（`-REL->` 或 `<-REL-`）。边上属性（`role`、`description`、`stated_by`、`locators` 等）在起点一侧节点的出边里，原样给出。正反关系保留真实方向，不推导传递关系。预算按路径计，截断时报告已见数量；容量见第 2.4 节。
 
 **常用路径：**
 

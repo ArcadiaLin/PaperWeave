@@ -66,7 +66,8 @@ def results(
         allowance -= used - limit
     cut = sum(k.endswith("_bytes") for e in excerpts for k in e)
     view["meta"]["size"] = {"limit": limit, "used": used, "cut": cut}
-    view["meta"]["size"]["used"] = _bytes(view)  # 写入 used 本身后的大小
+    for _ in range(2):  # 写入 used 本身后的大小；第二次计入位数的变化
+        view["meta"]["size"]["used"] = _bytes(view)
     return view
 
 
@@ -121,13 +122,14 @@ def _excerpt(texts: dict[str, str], share: int) -> dict[str, Any]:
             out[field] = text
             share -= size
             continue
-        out[field] = _cut(text, share)
+        out[field] = cut(text, share)
         out[f"{field}_bytes"] = size
         share = 0
     return out
 
 
-def _cut(text: str, size: int) -> str:
+def cut(text: str, size: int) -> str:
+    """截到 ``size`` 字节以内（UTF-8 字符边界），末尾写 ``…``。"""
     head = text.encode("utf-8")[: max(size - _len(ELLIPSIS), 0)].decode("utf-8", "ignore").rstrip()
     return head + ELLIPSIS
 
@@ -140,4 +142,4 @@ def _bytes(view: dict[str, Any]) -> int:
     return _len(dump(view))
 
 
-__all__ = ["EXCERPTS", "LIMIT", "results"]
+__all__ = ["EXCERPTS", "LIMIT", "cut", "results"]
