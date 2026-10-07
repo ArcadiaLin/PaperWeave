@@ -189,30 +189,34 @@ class VersionedGraph:
 
     def history(self, branch: str = "main") -> list[CommitRecord]:
         """分支上的全部提交，从最早到最新。"""
-        records = self._read(
-            """MATCH (b:Branch {name: $name})
-               MATCH (h:Commit {id: b.head})-[:PARENT*0..]->(c:Commit)
-               RETURN properties(c) AS c ORDER BY c.seq""",
-            name=branch,
-        )
-        return [_record_from_props(r["c"]) for r in records]
+        with self._session() as session:
+            return session.execute_read(_history, branch)
 
     def snapshot(self) -> GraphState:
         """当前受版本管理的状态：带 ``id`` 的非版本记录节点，以及它们之间的非版本记录关系；不含不受版本管理的属性。"""
-        nodes = self._read(
-            """MATCH (n) WHERE n.id IS NOT NULL AND none(l IN labels(n) WHERE l IN $labels)
-               RETURN n.id AS id, labels(n) AS labels, properties(n) AS props""",
-            labels=_RESERVED_LABELS,
-        )
-        edges = self._read(
-            """MATCH (a)-[r]->(b)
-               WHERE a.id IS NOT NULL AND b.id IS NOT NULL AND NOT type(r) IN $types
-                 AND none(l IN labels(a) + labels(b) WHERE l IN $labels)
-               RETURN a.id AS src, type(r) AS type, b.id AS dst, properties(r) AS props""",
-            labels=_RESERVED_LABELS,
-            types=_RESERVED_TYPES,
-        )
-        return _state_from_rows(nodes, edges, self._unversioned)
+        with self._session() as session:
+            return session.execute_read(_snapshot, self._unversioned)
+
+    def state_at(self, commit_id: str | None, branch: str = "main") -> GraphState:
+        """分支上提交 ``commit_id`` 写入后的完整状态；``None`` 表示第一个提交之前（空状态）。
+
+        在同一个读事务中取出当前的完整状态与分支历史，把 ``commit_id`` 之后各提交的逆向变更集从新到旧依次应用。
+        这是求旧状态的参照实现：每个逆向变更集都作用在它对应的完整状态上，前提核对因此都能成立；
+        不成立说明库中状态与版本记录不一致，抛出 :class:`ConflictError`。
+
+        Raises:
+            GraphVCError: ``commit_id`` 不在该分支上。
+            ConflictError: 逆向应用时前提不成立。
+        """
+        with self._session() as session:
+            state, records = session.execute_read(_state_and_history, branch, self._unversioned)
+        ids = [r.id for r in records]
+        if commit_id is not None and commit_id not in ids:
+            raise GraphVCError(f"commit {commit_id!r} is not on branch {branch!r}")
+        after = records[ids.index(commit_id) + 1 :] if commit_id is not None else records
+        for record in reversed(after):
+            state = state.apply(record.changeset.invert())
+        return state
 
     def local_state(self, ids: Iterable[str]) -> GraphState:
         """``ids`` 周围的局部状态：其中存在的节点、它们的全部关系，以及这些关系另一端的节点。
@@ -556,6 +560,43 @@ def _record_from_props(props: Mapping[str, Any]) -> CommitRecord:
         touched=tuple(props.get("touched", ())),
         removed=tuple(props.get("removed", ())),
     )
+
+
+def _history(tx: ManagedTransaction, branch: str) -> list[CommitRecord]:
+    rows = tx.run(
+        """MATCH (b:Branch {name: $name})
+           MATCH (h:Commit {id: b.head})-[:PARENT*0..]->(c:Commit)
+           RETURN properties(c) AS c ORDER BY c.seq""",
+        name=branch,
+    )
+    return [_record_from_props(r["c"]) for r in rows]
+
+
+def _snapshot(tx: ManagedTransaction, unversioned: frozenset[str]) -> GraphState:
+    nodes = list(
+        tx.run(
+            """MATCH (n) WHERE n.id IS NOT NULL AND none(l IN labels(n) WHERE l IN $labels)
+               RETURN n.id AS id, labels(n) AS labels, properties(n) AS props""",
+            labels=_RESERVED_LABELS,
+        )
+    )
+    edges = list(
+        tx.run(
+            """MATCH (a)-[r]->(b)
+               WHERE a.id IS NOT NULL AND b.id IS NOT NULL AND NOT type(r) IN $types
+                 AND none(l IN labels(a) + labels(b) WHERE l IN $labels)
+               RETURN a.id AS src, type(r) AS type, b.id AS dst, properties(r) AS props""",
+            labels=_RESERVED_LABELS,
+            types=_RESERVED_TYPES,
+        )
+    )
+    return _state_from_rows(nodes, edges, unversioned)
+
+
+def _state_and_history(
+    tx: ManagedTransaction, branch: str, unversioned: frozenset[str]
+) -> tuple[GraphState, list[CommitRecord]]:
+    return _snapshot(tx, unversioned), _history(tx, branch)
 
 
 def _dumps(data: Any) -> str:

@@ -23,6 +23,7 @@ from graph_vc import (
     FileIntegrityError,
     FileRef,
     GraphState,
+    GraphVCError,
     NodeChange,
     VersionedGraph,
 )
@@ -192,6 +193,21 @@ def test_every_commit_is_reversible(graph: VersionedGraph) -> None:
     assert states[-1] == graph.snapshot()
     for record, before, after in zip(graph.history(), states[:-1], states[1:], strict=True):
         assert after.apply(record.changeset.invert()) == before
+
+
+def test_state_at_is_the_state_after_each_commit(graph: VersionedGraph) -> None:
+    seed(graph)
+    graph.commit(edit(), author="claude")
+    graph.revert(graph.head(), author="claude")
+    graph.commit(edit(), author="claude")
+    states = [GraphState()]
+    for record in graph.history():
+        states.append(states[-1].apply(record.changeset))
+    assert graph.state_at(None) == GraphState()
+    for record, state in zip(graph.history(), states[1:], strict=True):
+        assert graph.state_at(record.id) == state
+    with pytest.raises(GraphVCError):
+        graph.state_at("commit_999999")
 
 
 def test_file_integrity(graph: VersionedGraph, tmp_path: Path) -> None:
