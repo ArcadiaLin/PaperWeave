@@ -1,5 +1,5 @@
 # PaperWeave 的 MCP 暴露：给模型看的全部文字。服务启动时按本文件装配，结构（参数的类型与必填项）来自
-# e09.operators，这里只写文字。
+# e09.tools（算子与版本记录的读取接口），这里只写文字。
 #
 #   server        serverInfo：name 与 version
 #   instructions  应该怎样使用这个服务（第一行同时是服务的一句话介绍）
@@ -17,7 +17,7 @@ server:
 
 instructions: |
   PaperWeave is a knowledge store built from CS papers, with the artifacts earlier sessions produced while using it.
-  Find with Search and Resolve, follow relations with Traverse, read source lines with ReadEvidence. Record your work with Extract, Summarize, Generate, Check, Verify, Filter or MatrixConstruct; each call is kept as an artifact that later sessions can find and reuse. Commit, when listed, changes the stored knowledge itself. Each tool's description says how to use it.
+  Find with Search and Resolve, follow relations with Traverse, read source lines with ReadEvidence. Record your work with Extract, Summarize, Generate, Check, Verify, Filter or MatrixConstruct; each call is kept as an artifact that later sessions can find and reuse. Commit, when listed, changes the stored knowledge itself. Every write is kept as a commit: Log, Show, Diff and AsOf read that history. Each tool's description says how to use it.
 
 shared:
   artifact: &artifact
@@ -256,3 +256,69 @@ tools:
       params.columns: "column key -> reference or {text}. Keys use letters, digits, _ . and -."
       payload: "{cells, note?}: the cells, as a JSON object."
       payload.cells[]: "{row, col, value (null when empty), basis?, note?}"
+
+  Log:
+    title: Log
+    description: |-
+      List the writes to the store, newest first. Every change to the store is a commit: a Commit call, each artifact an operator such as Extract or Check records, and the initial paper ingestion. Each entry gives the commit id, time, writer (by), source, message, counts of created, updated and deleted nodes and edges, and the ids it touched (first 20, with touched_total when there are more). Log does not give contents; use Show for those.
+
+      This reads history, not the current knowledge: use it to see who wrote or changed an object and when, then Show or Diff to see how. The branch is pinned on the first call: meta.at is the commit the listing starts from, and later pages stay at that commit even if new writes arrive.
+
+      A page holds at most budget commits and at most 16 KB; meta.continuation is then set.
+    parameters:
+      branch: Branch to list (default main, the shared store).
+      node: Only commits that created, changed or deleted these objects or their relations; a list of ids.
+      by: Only commits by this writer (the by of an entry, such as a model name).
+      source: Only commits whose source starts with this text, e.g. "operator:" for artifacts written by operators, "operator:Check" for Check artifacts.
+      since: Only commits after this commit id (not including it), or at or after this ISO time such as 2026-10-06T14:00.
+      until: Only commits up to and including this commit id, or up to this ISO time; a date alone such as 2026-10-06 includes that whole day.
+      budget: Number of commits in this page (default 50).
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.
+
+  Show:
+    title: Show
+    description: |-
+      Show one commit: what it changed and what it was based on. Three parts:
+      - summary (default): header (id, seq, parent, branch, at, by, source, message, base), counts, touched and removed ids, the identity confirmations (confirm) and new-id mapping (ids) of a Commit, the artifact of an operator call, and the size of the input.
+      - input: the text that was submitted, verbatim: the graph-doc of a Commit, or the parameters of an operator call. Paged by lines.
+      - changes: what changed, one entry per object: {id, kind, op, fields, edges}. op is create, update, delete, or edges (only its outgoing relations changed). fields gives [before, after] for each changed field; edges lists added, removed and changed outgoing relations. Aliases and material show as the aliases and material fields. Paged by object.
+
+      Results are at most 16 KB. When one object alone does not fit, its long texts and lists are shortened (ending with …) and its _cut lists each shortened path with its full size; read the full value with node: <id>, field: <path from _cut>, offset (0, then meta.next_offset).
+    parameters:
+      commit: The commit id, such as commit_000027 (from Log, or meta.coverage.snapshot of Search and Traverse); main means the latest commit.
+      part: summary, input or changes (default summary).
+      node: With part changes, only these objects; a list of ids. Exactly one id when field is given.
+      field: With part changes, a path listed in an entry's _cut, to read that value in full.
+      offset: With field, where to continue reading (bytes of a text, items of a list); 0 or the previous meta.next_offset.
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.
+
+  Diff:
+    title: Diff
+    description: |-
+      What changed between two states of the store: the net difference from commit `from` to commit `to`. A field changed and then changed back does not appear; to see each step, use Log and Show. `from` must be `to` or an earlier commit on the same branch.
+
+      Use it to check what changed since a state you or an artifact relied on, e.g. from an artifact's commit (Log with node: [<artifact id>]) or a snapshot from Search or Traverse, to main.
+
+      The result starts with a summary (number of commits in between, counts by kind and op, the first 20 changed ids), then one entry per changed object, as in Show part changes: {id, kind, op, fields: {field: [before, after]}, edges: {added, removed, changed}}. Paged by object; at most 16 KB. When one object alone does not fit, its long texts and lists are shortened and its _cut lists each shortened path; read the full value with node: <id>, field: <path from _cut>, offset.
+    parameters:
+      from: The earlier commit id.
+      to: The later commit id; main (default) means the latest commit.
+      node: Only these objects; a list of ids. Exactly one id when field is given.
+      field: A path listed in an entry's _cut, to read that value in full.
+      offset: With field, where to continue reading (bytes of a text, items of a list); 0 or the previous meta.next_offset.
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.
+
+  AsOf:
+    title: AsOf
+    description: |-
+      Read objects as they were right after a past commit: the same view as Traverse with an empty path (all fields, outgoing relations, aliases, and an artifact's _op, _params, _document and _USED), but from that past state. This is history, not the current knowledge: do not hand an AsOf view to Commit, which would undo later changes.
+
+      Use it to see what an answer or an artifact was based on, e.g. the inputs of an artifact as they were at its commit. Objects that did not exist then, or had been deleted, are listed in meta.missing. AsOf reads by id only; to see a neighbour as it was, give its id in another AsOf call. _stale is not given: it compares with the current state, which Diff does.
+
+      Paged by object; at most 16 KB. When one object alone does not fit, its long texts and lists are shortened (ending with …) and its _cut lists each shortened path with its full size; read the full value with ids: [<id>], field: <path from _cut>, offset.
+    parameters:
+      at: The commit id, such as commit_000027 (from Log, or meta.coverage.snapshot of Search and Traverse); main means the latest commit.
+      ids: The objects to read; a list of ids. Exactly one id when field is given.
+      field: A path listed in the object's _cut, to read that value in full.
+      offset: With field, where to continue reading (bytes of a text, items of a list); 0 or the previous meta.next_offset.
+      continuation: meta.continuation of the previous page, to get the next page; keep the other parameters unchanged.

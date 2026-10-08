@@ -1,10 +1,11 @@
-"""PaperWeave 的 MCP 服务（stdio）：把 :data:`e09.operators.OPERATORS` 作为 MCP 工具提供给通用 Agent。
+"""PaperWeave 的 MCP 服务（stdio）：把 :data:`e09.tools.TOOLS`（算子与版本记录的读取接口）作为 MCP 工具提供给
+通用 Agent。
 
     python -m e09.mcp       # 由 MCP 客户端启动；实验目录的 .pi/mcp.json 由 python -m e09.workspace 生成
 
-每个算子是一个工具：工具名就是算子名，工具按 ``server.yml`` 装配（:mod:`e09.mcp.spec`），调用经 ``Operator.call``，
-与命令行入口（:mod:`e09.cli`）的结果相同。结果以 YAML 文本返回；``status`` 为 ``rejected``、``blocked`` 或
-``conflict`` 时标为 ``isError``，内容照样交给模型。
+每个算子与读取接口是一个工具：工具名就是它的名称，工具按 ``server.yml`` 装配（:mod:`e09.mcp.spec`），
+调用经 ``Operator.call``，与命令行入口（:mod:`e09.cli`）的结果相同。结果以 YAML 文本返回；``status`` 为
+``rejected``、``blocked`` 或 ``conflict`` 时标为 ``isError``，内容照样交给模型。
 
 **调用环境。** MCP 调用不带客户端的会话与模型，所以 Agent 算子的 ``session`` 由服务进程启动时生成（一个客户端
 会话对应一个服务进程），``formed_by`` 由环境变量 ``E09_FORMED_BY`` 给出，二者都记在 Artifact 上。
@@ -31,9 +32,10 @@ import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from ..operators import OPERATORS, Context
+from ..operators import Context
 from ..operators.base import rejected
 from ..store import Store, UnversionedDatabaseError, check_versioned, open_graph
+from ..tools import TOOLS
 from .spec import Spec, load
 
 log = logging.getLogger("e09.mcp")
@@ -58,7 +60,7 @@ def serve(store: Store, *, session: str, formed_by: str | None, sync: Any, spec:
 
     @server.call_tool(validate_input=False)  # 参数由算子核对，错误与命令行同形
     async def call_tool(name: str, arguments: dict[str, Any]) -> types.CallToolResult:
-        op = OPERATORS[name] if name in tools else None
+        op = TOOLS[name] if name in tools else None
         if op is None:
             result = rejected([{"rule": "format", "at": "tool", "msg": f"one of {list(tools)}"}])
         else:

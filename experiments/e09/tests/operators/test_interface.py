@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
-from e09.operators import OPERATORS, Context, call
+from e09.operators import Context
+from e09.tools import TOOLS as OPERATORS
+from e09.tools import call
 
 AT = "2026-10-05T12:00:00+00:00"
 NO_STORE: Any = None  # 被拒绝的请求不会用到库

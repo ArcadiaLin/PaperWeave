@@ -1,6 +1,6 @@
 # 版本记录的读取接口：Log、Show、Diff、AsOf
 
-> **记录日期：** 2026-10-07。**状态：** 设计草案，尚未实现。同日按评审修订：`AsOf` 以完整状态的逆向重放为准（第 6 节）；历史读取的材料访问与只读字段（第 6.2 节）；分支名与分页固定到具体提交（第 2.1 节）；容量与不截断的冲突规则（第 2.2 节）；Fork 与 Merge 的定位（第 1 节）。
+> **记录日期：** 2026-10-07。**状态：** 四个接口已在 E09 实现（`experiments/e09/src/e09/interfaces/`，作为 MCP 工具提供）；ReadEvidence 的 `at` 参数（第 6.2 节）与 Search、Traverse 的头提交核对（第 2.1 节）尚未实现。实现中定下的写法已补入第 2.1、2.2、2.3、3、4 节与第 9 节。同日按评审修订：`AsOf` 以完整状态的逆向重放为准（第 6 节）；历史读取的材料访问与只读字段（第 6.2 节）；分支名与分页固定到具体提交（第 2.1 节）；容量与不截断的冲突规则（第 2.2 节）；Fork 与 Merge 的定位（第 1 节）。
 >
 > 依据：[版本化知识管理备忘](../../discussions/2026-10-05-versioned-knowledge-management.md) 的第 3、4 节，[Commit 工具设计](../../experiments/e09/operators/commit.md) 的第 8 节，以及 `packages/graph-vc` 的现状。
 
@@ -29,6 +29,8 @@
 
 **固定到具体提交。** 分支头会移动，分页期间也可能有新的提交。因此每个接口在第一次请求时把分支名解析成具体的提交 id，响应的 `meta.at` 给出它（`Diff` 为 `meta.from` 与 `meta.to`），`continuation` 也带着它；续取时只读这个固定的状态或范围，不再解析分支名。之后的新提交要重新发起请求才能看到。
 
+续取位置写成字符串 `<下一项的序号>@<提交>`，如 `2@commit_000032`；`Diff` 为 `<序号>@<from>..<to>`；`Show` 的 `input` 中序号是字节位置。续取时若参数给的是提交 id，须与续取位置中的相同，否则拒绝。
+
 **Search 与 Traverse 的 `snapshot` 需要补一条规则。** 现在它们先查询、再单独读一次头提交，两步之间若有写入，返回的 `snapshot` 不一定就是结果所在的状态。改为查询前后各读一次头提交：两次相同才给出 `snapshot`；不同时给 `snapshot: null` 并说明读取期间状态有变化。这样 Agent 记下的 `snapshot` 才能可靠地交给 `AsOf`。
 
 ### 2.2 输出与容量
@@ -38,7 +40,8 @@
 - **16 KB 是硬上限**（与 Search、Traverse 相同），`meta.size` 给出上限与实际大小。上限优先于"不截断"，规则如下：
   1. **先给摘要，再分页给明细。** 摘要只给计数和有限的预览：`touched`、`removed`、`ids` 等列表最多给前 20 项，并给出总数；完整列表在明细中分页取得。
   2. **明细按节点分页。** 放不下的节点整体移到下一页，`meta.continuation` 给出续取位置。
-  3. **单个节点自己就放不下时**，它的长字符串字段像 Search 的摘录一样截短：末尾写 `…`，并给出原文长度 `<字段>_bytes`；该项标出 `cut: true`。被截短的字段用分块读取取回：`Show`、`Diff`、`AsOf` 都接受 `field` 与 `offset`（此时 `node` 或 `ids` 只给一个 id），从第 `offset` 字节起返回这个字段值的一段。
+  3. **单个节点自己就放不下时**，先把过长的字符串截到同一个长度（末尾写 `…`），取放得下的最大长度；字符串截到最短（64 字节）仍放不下时，再把过长的列表截到同一个项数。被截短的位置记在该项的 `_cut` 中，写成 `{路径: {bytes: 原长}}` 或 `{路径: {items: 原项数}}`，路径用 `.` 连接键与列表下标，如 `fields.text.1`。值可能嵌在变更视图的 `[改前, 改后]` 里，所以不用 Search 的 `<字段>_bytes` 写法。
+     被截短的值用分块读取取回：`Show`（`part: changes`）、`Diff`、`AsOf` 都接受 `field`（`_cut` 中的路径）与 `offset`，此时 `node` 或 `ids` 只给一个 id。结果是 `{id, field, offset, bytes | items, value, meta}`：字符串从第 `offset` 字节起、列表从第 `offset` 项起，给出放得下的最长一段，`meta.next_offset` 是下一段的起点，读完为 `null`。
 - Traverse 现在在一条路径也放不下时仍返回这一条，会超过上限；之后按规则 3 统一。
 
 ### 2.3 变更视图
@@ -60,7 +63,8 @@
 - 字段的拼写与读视图（graph-doc）相同：系统字段与派生字段（向量、自然键）不出现。
 - 关系挂在起点一侧的节点下，与读视图一致。只有入边变化的节点不单列，它的变化在起点节点下。
 - 系统关系按读视图的写法显示为字段：`NAMES` 的变化显示为对象的 `aliases` 变化，`MATERIAL_OF` 的变化显示为 `material`（Artifact 为 `_document`）变化。它们是指向对象的入边，所以求差时要把对象的这两类入边一并算入。
-- 新建与删除的节点给出全部字段；修改的节点只给变化的字段。
+- 新建与删除的节点给出全部字段；修改的节点只给变化的字段。`kind` 只在外层给出，只有修改时 kind 本身变了才出现在 `fields` 中。
+- Artifact 按它的读视图比较：`_op`、`_title`、`_params` 等只读字段与 `_USED`（按关系比较）；`_params` 不另作处理，过长时按第 2.2 节截短。
 
 ## 3. Log：发生过哪些写入
 
@@ -89,7 +93,9 @@ commits:
 meta: {returned: 1, matched: 1, continuation: null, size: {...}}
 ```
 
-`touched` 太长时只给前 20 个，并给出总数，完整列表用 `Show` 查看。`Log` 不给内容，内容用 `Show`。
+`touched` 与 `removed` 只列图模型对象与 Artifact，NameKey、Material 这类系统节点不列，它们的变化显示在所属对象的 `aliases` 与 `material` 上。太长时只给前 20 个，并给出总数 `touched_total`。`Log` 不给内容，内容用 `Show`。
+
+`since` 与 `until` 给提交 id 时按序号比较（`since` 不含本身，`until` 含本身）；给 ISO 时间时按写入时间比较，`until` 只给日期时含当天。
 
 ## 4. Show：一次写入做了什么、依据什么
 
@@ -102,8 +108,10 @@ Show(commit, part=summary | input | changes, node?, field?, offset?, continuatio
 | `part` | 内容 |
 | --- | --- |
 | `summary`（默认） | 头信息：`id`、`seq`、`parent`、`branch`、`at`、`by`、`source`、`message`、`base`；计数；`touched` 与 `removed`；`confirm`（同一性判断）；临时引用到 id 的映射 `ids`；`input` 的大小 |
-| `input` | 交上来的原文：Commit 工具的 graph-doc，或 Agent 算子的调用参数。按行分页 |
+| `input` | 交上来的原文：Commit 工具的 graph-doc，或 Agent 算子的调用参数。按行分页，一行就放不下时在行内断开；`meta` 给出行号范围、字节范围与总数 |
 | `changes` | 变更视图（2.3 节），按节点分页 |
+
+`confirm` 取自 Commit 交上来的 graph-doc；`ids` 写成 `临时引用 -> id` 的列表，同样只给前 20 项与总数。`changes` 就是父提交与本提交之间的净差异，与 `Diff(parent, commit)` 相同。
 
 例：`Show(commit_000027)` 能看到 Agent 交的 doc 里把 `claim_0001` 的 `FROM` 指向 `paper_0004`，`note` 里写着 "Agent-derived"。这正是第一轮试跑那次语义误用的完整记录。
 
@@ -181,8 +189,11 @@ AsOf(at, ids, field?, offset?, continuation?)
 - **四个接口都作为 MCP 工具交给 Agent**，因为"按版本读取状态"是要评测的 workload。工具说明要写清它们读的是历史，不是当前知识。
 - **代码位置：** 与 `operators/` 平行，新建 `src/e09/interfaces/`，一个接口一个文件；MCP 服务一并注册。求旧状态的参照实现（第 6.1 节）放在 graph-vc（`VersionedGraph.state_at`）。
 
+实现时定下（2026-10-07）：
+
+- **`input` 按行分页**，一行放不下时在行内断开（第 4 节）。
+- **Artifact 在变更视图中按读视图显示**，`_params` 不单独处理，由容量规则截短（第 2.3 节）。
+
 仍待定：
 
-1. **`input` 的分页单位。** 按行，还是对 graph-doc 按节点。
-2. **`Diff` 是否允许 `from` 不是 `to` 的祖先。** 线性历史上不会出现；有了分支之后，可以以共同祖先为基线，求两侧的变化。
-3. **Agent 算子写入的 Artifact 在变更视图中如何显示。** Artifact 的字段都是只读的，`params` 可能很长。倾向于给 `_op`、`_title` 和 `_USED`，`_params` 只给大小。
+1. **`Diff` 是否允许 `from` 不是 `to` 的祖先。** 线性历史上不会出现；有了分支之后，可以以共同祖先为基线，求两侧的变化。

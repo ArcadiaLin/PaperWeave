@@ -15,7 +15,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 from e09.config import REPO
 from e09.mcp import SPEC, SpecError, load, serve
-from e09.operators import OPERATORS
+from e09.tools import TOOLS as OPERATORS
 from e09.workspace import main as workspace
 
 NO_STORE: Any = None  # 被拒绝的请求不会用到库

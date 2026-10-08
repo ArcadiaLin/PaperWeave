@@ -1,12 +1,12 @@
-"""算子的命令行入口：读一份请求（YAML），按 ``op`` 交给对应的算子，输出结果。
+"""算子与版本记录读取接口的命令行入口：读一份请求（YAML），按 ``op`` 交给对应的工具，输出结果。
 
     python -m e09 <请求.yml | -> [--no-embed] [--session 会话 --formed-by 形成者]
     python -m e09 -e '{op: Traverse, start: [method_0028], path: [{rel: EVALUATES, dir: in}]}'
     python -m e09 <文档.yml> --source <来源标签> [--apply] [--message 说明] [--base 提交 id] [--no-dedup]
 
-请求的 ``op`` 是任一算子（见 :mod:`e09.operators`），其余键是它的参数。直接给一份 graph-doc（以 ``graph-doc:`` 开头）
-时视为 ``Commit``，``--source`` 等选项给出它的参数。Agent 算子写入时须给出 ``--session`` 与 ``--formed-by``
-（调用环境的信息，不写在请求中）。作为 MCP 工具提供给 Agent 的入口见
+请求的 ``op`` 是任一算子或读取接口（见 :mod:`e09.tools`），其余键是它的参数。直接给一份 graph-doc
+（以 ``graph-doc:`` 开头）时视为 ``Commit``，``--source`` 等选项给出它的参数。Agent 算子写入时须给出
+``--session`` 与 ``--formed-by``（调用环境的信息，不写在请求中）。作为 MCP 工具提供给 Agent 的入口见
 :mod:`e09.mcp`。连接、文档目录与向量服务用 ``E09_NEO4J_URI`` 所指的库、
 ``e09.config.DATA`` 与 ``EMBED_URL``；``--no-embed`` 关闭查询向量，写入后也不补算向量。Agent 算子通过校验、
 确实写入前建立 Artifact 的约束与索引。没有版本记录的旧库一律拒绝。
@@ -26,9 +26,10 @@ from typing import Any
 
 from graph_doc import GraphDocError, load
 
-from .operators import Context, call
+from .operators import Context
 from .operators.base import rejected
 from .store import Store, UnversionedDatabaseError, check_versioned, open_graph
+from .tools import call
 
 
 def request_of(text: str, args: argparse.Namespace) -> dict[str, Any]:

@@ -9,10 +9,11 @@ from pathlib import Path
 import pytest
 from conftest import AT, MATERIAL
 
-from e09.operators import Context, call
+from e09.operators import Context
 from e09.operators.db.read_evidence import read_evidence
 from e09.operators.db.traverse import traverse
 from e09.store import Store
+from e09.tools import call
 
 
 def material_id(store: Store) -> str:

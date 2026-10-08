@@ -26,7 +26,7 @@ from ..store.store import ContractError, Store
 from ..yamlfmt import dump
 from .repair import repair
 
-Family = Literal["db", "agent"]
+Family = Literal["db", "agent", "interface"]
 FAILED = frozenset({"rejected", "blocked", "conflict"})  # 没有完成的状态
 
 
@@ -74,6 +74,7 @@ CONTEXT_KEYS = ("op", "session", "formed_by")  # 写入请求中不由参数给�
 @dataclass(frozen=True)
 class Operator:
     """一个算子。``family`` 为 ``db``（由中间件执行）或 ``agent``（Agent 给内容，中间件校验后写成 Artifact）；
+    版本记录的读取接口（:mod:`e09.interfaces`）也用这个形式，``family`` 为 ``interface``；
     ``validate`` 只有 Agent 算子有。给模型看的文字（标题、说明、参数说明）不在这里，见 :mod:`e09.mcp`。"""
 
     name: str
@@ -146,6 +147,16 @@ def db_operator(
     return Operator(name, "db", parameters, execute)
 
 
+def interface(
+    *,
+    name: str,
+    parameters: dict[str, Any],
+    run: Callable[..., dict[str, Any]],
+) -> Operator:
+    """版本记录的读取接口：与只读算子一样调用，来源不同（从版本机制推导，不从 workload 推导）。"""
+    return replace(db_operator(name=name, parameters=parameters, run=run), family="interface")
+
+
 def agent_operator(
     *,
     name: str,
@@ -193,6 +204,7 @@ __all__ = [
     "Result",
     "agent_operator",
     "db_operator",
+    "interface",
     "one_or_many",
     "params_of",
     "rejected",

@@ -1,5 +1,5 @@
 """按 ``server.yml`` 装配 MCP 暴露：服务名与版本、``instructions``、每个算子的工具（标题、说明、带参数说明的
-``inputSchema``）。结构来自 :data:`e09.operators.OPERATORS`，文字只在 ``server.yml`` 中。
+``inputSchema``）。结构来自 :data:`e09.tools.TOOLS`，文字只在 ``server.yml`` 中。
 
 装配时严格核对，任一不过即拒绝（服务不启动）：顶层键、``server`` 的键、工具与算子一一对应、每个工具的键、参数路径
 都能在算子的 ``parameters`` 中找到、每个顶层参数都有说明。
@@ -22,7 +22,8 @@ from typing import Any
 import mcp.types as types
 import yaml
 
-from ..operators import OPERATORS, Operator
+from ..operators import Operator
+from ..tools import TOOLS
 
 SPEC = Path(__file__).with_name("server.yml")
 TOP = {"server", "instructions", "shared", "tools"}
@@ -49,7 +50,7 @@ class Spec:
     digest: str
 
 
-def load(path: Path = SPEC, operators: Mapping[str, Operator] = OPERATORS) -> Spec:
+def load(path: Path = SPEC, operators: Mapping[str, Operator] = TOOLS) -> Spec:
     """读 ``server.yml`` 并装配全部算子的工具。
 
     Raises:
@@ -97,7 +98,8 @@ def load(path: Path = SPEC, operators: Mapping[str, Operator] = OPERATORS) -> Sp
 
 
 def annotations(op: Operator, title: str) -> types.ToolAnnotations:
-    """MCP 的行为提示：读取算子只读；Agent 算子只追加，相同调用重试返回已有的 Artifact；Commit 可修改与删除。"""
+    """MCP 的行为提示：读取算子与读取接口只读；Agent 算子只追加，相同调用重试返回已有的 Artifact；
+    Commit 可修改与删除。"""
     if not op.writes:
         return types.ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=False)
     agent = op.family == "agent"

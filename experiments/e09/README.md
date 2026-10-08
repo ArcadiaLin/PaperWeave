@@ -52,6 +52,9 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
   其中只有登记该服务的 `.pi/mcp.json`（`formed_by` 默认取 pi 的默认模型）、把会话存到 `.pi/sessions/` 的
   `.pi/settings.json` 与启动脚本 `pi.sh`（`./pi.sh` 进入交互界面，`./pi.sh -r` 选择会话继续）。第一次启动时确认信任该
   目录，非交互运行加 `--approve`。目录必须在仓库外，否则 pi 会加载仓库的 `AGENTS.md`。
+- 版本记录的读取接口（`interfaces/`）：Log、Show、Diff、AsOf，只读，也作为 MCP 工具提供（`docs/designs/v2/versioning_interfaces.md`）。
+  它们从版本机制推导，不算算子；分支名在第一次调用时固定到具体提交，续取位置带着它；旧状态由完整状态的逆向重放求得
+  （graph-vc 的 `state_at`）；结果不超过 16 KB，单个对象放不下时截短，并标出 `_cut`，原值用 `field` 与 `offset` 分块读取。
 - 读视图是一份 graph-doc：`nodes` 原样交回 Commit 为 `noop`，`meta` 是 AccessResult。
 - 连接、查重与向量补算都用 `E09_NEO4J_URI` 所指的库。有数据却没有版本记录的库（如旧写入路径建出的库）一律拒绝。
   首次提交时建立版本记录、约束、全文索引与向量索引；Agent 算子通过校验、确实写入前同样建立。提交后补算向量，向量服务不可用时只给
@@ -81,28 +84,34 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
     notebooks/            探索面（目前没有 notebook）；notebooks/_scratch/ 放导出的中间结果，不进版本管理
     src/e09/              已确定的部分，脚本与 notebook 共用
     src/e09/operators/    算子：base.py 定义 Operator；db/ 由中间件执行，agent/ 由 Agent 给内容；每个算子一个文件
+    src/e09/interfaces/   版本记录的读取接口：Log、Show、Diff、AsOf，每个接口一个文件
     src/e09/model/        数据模型与写法：schema、引用、名称精确键
     src/e09/store/        连接与库：Store、版本记录与约束索引、向量
-    src/e09/query/        读取共用：结构条件、RRF 融合、读视图与只读字段、固定材料、Resolve 的三级解析
+    src/e09/query/        读取共用：结构条件、RRF 融合、读视图与只读字段、固定材料、Resolve 的三级解析、
+                          容量控制、固定提交与续取、旧视图与变更视图
     src/e09/commit/       graph-doc 的写入管线
     src/e09/artifact/     Artifact 的文档、共同写入路径与可能过期
     tests/commit/         写入管线的检验：内存状态上的场景；设置 GRAPH_VC_TEST_NEO4J_URI 时另在测试实例上往返
     tests/operators/      db/ 与 agent/ 算子的检验，只在空的测试实例（GRAPH_VC_TEST_NEO4J_URI）上运行
+    tests/interfaces/     读取接口的检验：内存中的版本历史，不连库
     i3/                   首个 I3 实例：questions.yml（三组共同看到的问题与答案格式）、reference.yml（参考答案）；
                           只用论文 citekey 与表格锚点，不依赖库中的 id。检验代码随旧读取算子删除，待新库建好后重写
 
 | 位置 | 内容 |
 | --- | --- |
 | `cli` | 命令行入口 `python -m e09`：按 `op` 分发；直接给 graph-doc 时视为 Commit |
+| `tools` | 全部工具的登记 `TOOLS`（算子与读取接口）与按 `op` 的分发 `call`；命令行与 MCP 服务共用 |
 | `mcp/server`、`mcp/spec`、`mcp/server.yml` | MCP 服务 PaperWeave（`python -m e09.mcp`）；按 `server.yml` 装配工具并核对；给模型看的全部文字 |
 | `workspace` | 实验目录的生成 |
 | `config`、`env_check` | 路径与连接参数；环境自检（`make check`） |
-| `operators/base` | `Operator`（name、family、parameters、execute；只有结构，文字在 `mcp/server.yml`）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造 |
+| `operators/base` | `Operator`（name、family、parameters、execute；只有结构，文字在 `mcp/server.yml`）、`Context`、`Result`；`db_operator`、`agent_operator` 两种构造，以及读取接口用的 `interface` |
 | `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact；结果只给摘录，按 16 KB 容量分配（`query/excerpts`） |
 | `operators/db/resolve` | Resolve：id → alias → 语义三级解析，Entity 与 Concept；返回带名称与说明开头的解析视图，匹配过程写入日志 |
 | `operators/db/traverse` | Traverse：按端点表校验每一跳，传递性关系的 `depth`，路径绑定；含 `USED`；超出 16 KB 时末尾的路径移到下一页 |
 | `operators/db/read_evidence` | ReadEvidence：按材料 id 或论文、Artifact 的 id 读行，校验文件哈希 |
 | `operators/db/commit` | Commit：dry_run 输出 graph-plan，`apply` 提交后补算向量并输出 graph-result |
+| `interfaces/log`、`interfaces/show` | Log：从新到旧列出提交，可按对象、写入者、来源前缀、时间或提交范围过滤；Show：一个提交的摘要、交上来的原文（按行分页）与变更视图 |
+| `interfaces/diff`、`interfaces/as_of` | Diff：两个提交之间的净差异，先摘要后逐对象；AsOf：对象在某个提交时的读视图（不带 `_stale`），不存在的列入 `missing` |
 | `operators/agent/<算子>` | 各 Agent 算子的 `validate`（参数与内容校验、默认标题、正文与数据块）与算子定义；`_common` 为字段类型、逐项判断与表格 |
 | `model/schema` | graph_model_v2 的机器可读部分：kind、各 kind 的字段与必需项、关系端点与属性、命名空间唯一性、id 前缀、约束、全文索引、来源引用的定位格式 |
 | `model/refs`、`model/namekey` | 引用写法与正文中的引用识别；规范化配置 `name-key-v1` 与精确键 |
@@ -110,6 +119,8 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 | `store/graph`、`store/embedding` | 连接与只读查询 `q`；向量服务（与 e08 共用 Qwen3-Embedding-8B）、向量索引与补算（`make embed`） |
 | `query/conditions`、`query/fusion` | 结构条件编译为 Cypher（Search 与 Traverse 共用）；召回参数、分词与 RRF 融合 |
 | `query/view`、`query/materials` | 读视图（节点带全部模型出边、只读字段以 `_` 开头）与只读字段；按引用找材料、按哈希读行 |
+| `query/capacity` | 16 KB 容量：分页时放得下的最多项数、单项的截短（`_cut`）与分块读取 |
+| `query/versions`、`query/changes` | 分支名或提交 id 固定到具体提交、续取位置的写法；旧状态的读视图、逐对象的变更视图与摘要 |
 | `query/resolve` | Resolve 的三级解析，read / write 两种模式；Commit 的查重也用它 |
 | `commit/translate`、`commit/checks` | graph-doc → 物理目标状态（kind → Label，name / aliases → NameKey，material → Material 等）；写入后状态的模型检查 |
 | `commit/submit`、`commit/reader` | `prepare`（dry_run，只读）与 `apply`（分配 id 后经 graph-vc 单事务提交）；内存与 Neo4j 两种读取 |
@@ -120,4 +131,4 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 ## 现在还不是什么
 
 neo4j-e09 已按新写入路径重建（2026-10-05，`commit_000001`–`000004`）：两份种子与两篇论文（2023-DLinear、2023-PatchTST），共 22 组实验。全部算子已实现，但库中还没有 Artifact；
-历史查询与 I3 的检验代码尚未实现。notebook 不能成为文档引用数字的唯一来源（AGENTS.md）。
+I3 的检验代码尚未实现。读取接口已实现（2026-10-07），ReadEvidence 的 `at` 参数与 Search、Traverse 读取前后核对头提交尚未实现。notebook 不能成为文档引用数字的唯一来源（AGENTS.md）。
