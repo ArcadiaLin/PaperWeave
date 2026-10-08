@@ -16,6 +16,11 @@ def ids(out: dict) -> list[str]:
     return [r["id"] for r in out["results"]]
 
 
+def test_snapshot_is_the_head_the_results_were_read_at(store: Store) -> None:
+    out = search(store, "Content", kinds=["Experiment"])
+    assert out["meta"]["snapshot"] == store.graph.head() and "diagnostics" not in out["meta"]
+
+
 def test_enumerates_by_structure_in_id_order(store: Store) -> None:
     out = search(store, "Content", kinds=["Experiment"], where={"evaluates": "method_0003", "role": "target"})
     assert ids(out) == ["exp_0001", "exp_0002"]

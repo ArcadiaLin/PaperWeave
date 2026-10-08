@@ -1,6 +1,6 @@
 # 版本记录的读取接口：Log、Show、Diff、AsOf
 
-> **记录日期：** 2026-10-07。**状态：** 四个接口已在 E09 实现（`experiments/e09/src/e09/interfaces/`，作为 MCP 工具提供）；ReadEvidence 的 `at` 参数（第 6.2 节）与 Search、Traverse 的头提交核对（第 2.1 节）尚未实现。实现中定下的写法已补入第 2.1、2.2、2.3、3、4 节与第 9 节。同日按评审修订：`AsOf` 以完整状态的逆向重放为准（第 6 节）；历史读取的材料访问与只读字段（第 6.2 节）；分支名与分页固定到具体提交（第 2.1 节）；容量与不截断的冲突规则（第 2.2 节）；Fork 与 Merge 的定位（第 1 节）。
+> **记录日期：** 2026-10-07。**状态：** 四个接口已在 E09 实现（`experiments/e09/src/e09/interfaces/`，作为 MCP 工具提供）；ReadEvidence 的 `at` 参数（第 6.2 节）与 Search、Traverse 的头提交核对（第 2.1 节）已实现（2026-10-08）。运行测试的方法见 `docs/experiments/e09/testing.md`。实现中定下的写法已补入第 2.1、2.2、2.3、3、4 节与第 9 节。同日按评审修订：`AsOf` 以完整状态的逆向重放为准（第 6 节）；历史读取的材料访问与只读字段（第 6.2 节）；分支名与分页固定到具体提交（第 2.1 节）；容量与不截断的冲突规则（第 2.2 节）；Fork 与 Merge 的定位（第 1 节）。
 >
 > 依据：[版本化知识管理备忘](../../discussions/2026-10-05-versioned-knowledge-management.md) 的第 3、4 节，[Commit 工具设计](../../experiments/e09/operators/commit.md) 的第 8 节，以及 `packages/graph-vc` 的现状。
 
@@ -31,7 +31,7 @@
 
 续取位置写成字符串 `<下一项的序号>@<提交>`，如 `2@commit_000032`；`Diff` 为 `<序号>@<from>..<to>`；`Show` 的 `input` 中序号是字节位置。续取时若参数给的是提交 id，须与续取位置中的相同，否则拒绝。
 
-**Search 与 Traverse 的 `snapshot` 需要补一条规则。** 现在它们先查询、再单独读一次头提交，两步之间若有写入，返回的 `snapshot` 不一定就是结果所在的状态。改为查询前后各读一次头提交：两次相同才给出 `snapshot`；不同时给 `snapshot: null` 并说明读取期间状态有变化。这样 Agent 记下的 `snapshot` 才能可靠地交给 `AsOf`。
+**Search 与 Traverse 的 `snapshot` 需要补一条规则。** 现在它们先查询、再单独读一次头提交，两步之间若有写入，返回的 `snapshot` 不一定就是结果所在的状态。改为查询前后各读一次头提交：两次相同才给出 `snapshot`；不同时给 `snapshot: null`，并在 `diagnostics.snapshot` 中说明读取期间状态有变化。这样 Agent 记下的 `snapshot` 才能可靠地交给 `AsOf`。
 
 ### 2.2 输出与容量
 
@@ -165,7 +165,7 @@ AsOf(at, ids, field?, offset?, continuation?)
 
 **材料访问。** 现在 ReadEvidence 在当前图中查找 Material 节点（`query/materials.py`）。如果材料节点或它的归属关系后来被删除了，即使文件还在，也会返回 missing。因此要规定：
 
-1. **旧视图给出的材料标识要能用于访问。** ReadEvidence 增加 `at` 参数：给出时按 $S_{at}$ 中登记的材料（路径与内容哈希）解析引用。
+1. **旧视图给出的材料标识要能用于访问。** ReadEvidence 增加 `at` 参数：给出时按 $S_{at}$ 中登记的材料（路径与内容哈希）解析引用，`coverage.at` 给出固定下来的提交。
 2. **文件保留。** 被任何提交引用过的材料文件不删除、不覆盖，按登记的哈希核对后读取（备忘第 7.3 节的保留根）。现在 Artifact 文档写入后不再改动，论文材料不能更换，实际上满足；但这要写成约束，而不是依赖现状。
 
 ## 7. 暂缓的接口

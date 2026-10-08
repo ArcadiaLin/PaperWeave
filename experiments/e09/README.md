@@ -108,7 +108,7 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 | `operators/db/search` | Search：精确命中优先，名称词面、全文与向量按 RRF 融合；`type=Artifact` 时只查 Artifact；结果只给摘录，按 16 KB 容量分配（`query/excerpts`） |
 | `operators/db/resolve` | Resolve：id → alias → 语义三级解析，Entity 与 Concept；返回带名称与说明开头的解析视图，匹配过程写入日志 |
 | `operators/db/traverse` | Traverse：按端点表校验每一跳，传递性关系的 `depth`，路径绑定；含 `USED`；超出 16 KB 时末尾的路径移到下一页 |
-| `operators/db/read_evidence` | ReadEvidence：按材料 id 或论文、Artifact 的 id 读行，校验文件哈希 |
+| `operators/db/read_evidence` | ReadEvidence：按材料 id 或论文、Artifact 的 id 读行，校验文件哈希；`at` 给出时按该提交时的状态解析引用 |
 | `operators/db/commit` | Commit：dry_run 输出 graph-plan，`apply` 提交后补算向量并输出 graph-result |
 | `interfaces/log`、`interfaces/show` | Log：从新到旧列出提交，可按对象、写入者、来源前缀、时间或提交范围过滤；Show：一个提交的摘要、交上来的原文（按行分页）与变更视图 |
 | `interfaces/diff`、`interfaces/as_of` | Diff：两个提交之间的净差异，先摘要后逐对象；AsOf：对象在某个提交时的读视图（不带 `_stale`），不存在的列入 `missing` |
@@ -131,4 +131,5 @@ neo4j-e09 的全部内容由 `data/raw/e09-paper-knowledge/docs/` 中的 graph-d
 ## 现在还不是什么
 
 neo4j-e09 已按新写入路径重建（2026-10-05，`commit_000001`–`000004`）：两份种子与两篇论文（2023-DLinear、2023-PatchTST），共 22 组实验。全部算子已实现，但库中还没有 Artifact；
-I3 的检验代码尚未实现。读取接口已实现（2026-10-07），ReadEvidence 的 `at` 参数与 Search、Traverse 读取前后核对头提交尚未实现。notebook 不能成为文档引用数字的唯一来源（AGENTS.md）。
+I3 的检验代码尚未实现。读取接口已实现（2026-10-07），ReadEvidence 的 `at` 参数与 Search、Traverse 读取前后核对头提交已实现（2026-10-08）。
+连库测试的运行方法见 `docs/experiments/e09/testing.md`。notebook 不能成为文档引用数字的唯一来源（AGENTS.md）。

@@ -76,6 +76,7 @@ AccessResult = {query, items, bindings, source_refs, missing, coverage, continua
 
 - **预算**是一次调用返回的主体结果数上限；截断必须可见（`Traverse` 在 `coverage` 中，`Search` 为非空的 `continuation`），续取时传回 `continuation`，其余参数不变。
 - **容量。** MCP 客户端会截断过长的工具结果（pi 为 20 KB），所以 `Search` 与 `Traverse` 的结果另有 16 KB 的容量上限，`meta.size` 给出上限与实际大小。`Search` 截短摘录（第 3.1 节）；`Traverse` 的对象视图要原样交回 `Commit`，不截断字段，放不下时从本页末尾去掉路径，续取位置随之前移。
+- **读取所在的提交。** `Search` 的 `meta.snapshot` 与 `Traverse` 的 `meta.coverage.snapshot` 是读取所在的提交，可以交给版本记录的读取接口 `AsOf`、`Diff`（[读取接口](./versioning_interfaces.md)）。读取前后各读一次主分支的头提交：两次相同才给出它；读取期间有写入时为 `null`，`diagnostics.snapshot` 说明原因，重新调用即可得到。
 - **契约错误**（未知参数、类型不符的引用、该类别不支持的条件、图模型中不存在的端点组合）直接报错，不返回部分结果。所有算子没有完成时的返回同形：`{status, errors}`，`status` 为 `rejected`（请求没有被执行，什么也没有写入）、`blocked`（`Commit` 的阻塞项）或 `conflict`（提交时与并发写入冲突），`errors` 的每一项为 `{rule, at, msg}`，`at` 指向出错的参数或节点，`Commit` 的阻塞项另带 `candidates` 与 `fix`。请求的顶层形状不对（未知参数、缺少必填参数）记为 `format`，参数的取值不对记为 `schema`。
 - **数据缺失**（引用不在库中、关系无记录）返回空集合与覆盖信息，不当作错误。
 - **执行失败**（向量服务不可用、索引缺失）记入通道状态（`Search` 为 `meta.failed`）；因失败而没有结果时不当作空结果。
@@ -223,10 +224,12 @@ hop = {rel, dir: out | in | both, kinds?, where?, edge?, depth?: 1–3}
 **用途：** 按来源引用读取固定材料中的行。论文原文与 Artifact 文档都是材料，读法相同。
 
 ```text
-ReadEvidence(source_refs) -> {items, missing, coverage}
+ReadEvidence(source_refs, at?) -> {items, missing, coverage}
 ```
 
 引用的开头写材料 id，或写带材料的节点 id（论文或 Artifact），两者等价。按 Material 节点的路径与内容哈希读取，只定位与读取，不解释内容；读到的每行带行号，便于引用其中更小的范围。逐项记录材料状态：`available`（读到，且文件哈希与入库时一致）、`missing`（引用格式不对、库中没有该材料或文件不在）、`error`（文件哈希变了或行号越界；不返回可能错位的文本）。`missing` 列出状态为 `missing` 的引用，各状态的数量在 `coverage` 中。
+
+`at`（提交 id 或 `main`）给出时，按该提交时的状态解析引用，`coverage.at` 给出固定下来的提交。它用于读取 `AsOf` 旧视图中的材料：即使材料节点或它的归属关系后来被删除，也能读到；文件仍按登记的哈希核对（[读取接口](./versioning_interfaces.md) 第 6.2 节）。
 
 ### 3.5 Commit
 

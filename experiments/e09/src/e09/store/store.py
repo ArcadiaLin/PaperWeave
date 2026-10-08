@@ -63,6 +63,13 @@ class Store:
         except GraphVCError:
             return None
 
+    def stable(self, before: str | None) -> tuple[str | None, dict[str, str]]:
+        """读取结束时核对头提交：仍是读取开始时的 ``before`` 时返回 ``(before, {})``；读取期间有写入时，结果不一定
+        属于哪一个提交，返回 ``(None, 说明)``，说明放进 ``diagnostics``。"""
+        if self.snapshot() == before:
+            return before, {}
+        return None, {"snapshot": "the store changed during this read; repeat the call to get a pinned snapshot"}
+
 
 def _kind(labels: frozenset[str]) -> str | None:
     return kind_of(labels) or (ARTIFACT if ARTIFACT in labels else None)

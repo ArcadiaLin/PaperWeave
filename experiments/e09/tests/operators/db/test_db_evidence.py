@@ -36,6 +36,14 @@ def test_source_refs_from_a_view_can_be_read_back(store: Store) -> None:
     assert [item["state"] for item in out["items"]] == ["available", "available"]
 
 
+def test_at_resolves_references_in_a_past_state(store: Store) -> None:
+    refs = ["paper_0001::5.1::21:21"]
+    first = store.graph.history()[0].id  # 种子：那时还没有论文
+    now = read_evidence(store, refs, at="main")
+    assert now["items"] == read_evidence(store, refs)["items"] and now["coverage"]["at"] == store.graph.head()
+    assert read_evidence(store, refs, at=first)["missing"] == refs
+
+
 def test_unreadable_references(store: Store, tmp_path: Path) -> None:
     material = material_id(store)
     out = read_evidence(store, ["garbage", "material_nope::a::1:2", f"{material}::a::59:61"])

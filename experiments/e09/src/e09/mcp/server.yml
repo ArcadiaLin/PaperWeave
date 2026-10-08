@@ -112,6 +112,7 @@ tools:
       Read only the lines you need; cite the same references (or narrower line ranges within them) in your artifacts.
     parameters:
       source_refs: List of source references, copied as given.
+      at: Optional commit id (or main). Resolve the references as of that commit, for materials named in an AsOf view; without it they are resolved in the current store.
 
   Commit:
     title: Commit
@@ -313,7 +314,7 @@ tools:
     description: |-
       Read objects as they were right after a past commit: the same view as Traverse with an empty path (all fields, outgoing relations, aliases, and an artifact's _op, _params, _document and _USED), but from that past state. This is history, not the current knowledge: do not hand an AsOf view to Commit, which would undo later changes.
 
-      Use it to see what an answer or an artifact was based on, e.g. the inputs of an artifact as they were at its commit. Objects that did not exist then, or had been deleted, are listed in meta.missing. AsOf reads by id only; to see a neighbour as it was, give its id in another AsOf call. _stale is not given: it compares with the current state, which Diff does.
+      Use it to see what an answer or an artifact was based on, e.g. the inputs of an artifact as they were at its commit. To read the source lines of an AsOf view, call ReadEvidence with the same at. Objects that did not exist then, or had been deleted, are listed in meta.missing. AsOf reads by id only; to see a neighbour as it was, give its id in another AsOf call. _stale is not given: it compares with the current state, which Diff does.
 
       Paged by object; at most 16 KB. When one object alone does not fit, its long texts and lists are shortened (ending with …) and its _cut lists each shortened path with its full size; read the full value with ids: [<id>], field: <path from _cut>, offset.
     parameters:

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -343,3 +344,46 @@ def test_results_are_yaml_for_the_agent(history: History) -> None:
     store: Any = Store(None, history, Path("."))  # type: ignore[arg-type]
     out = call(Context(store, AT), {"op": "Diff", "from": "commit_000001"})
     assert yaml.safe_load(out.text) == out.details
+
+
+# ── 历史读取用到的两处算子改动 ───────────────────────────────────────
+
+
+def test_read_evidence_at_resolves_materials_of_that_commit(history: History, tmp_path: Path) -> None:
+    text = "".join(f"line {i}\n" for i in range(1, 11))
+    (tmp_path / "paper.md").write_text(text, encoding="utf-8")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    material = NodeChange.create("material_0001", ["Material"], {"path": "paper.md", "content_hash": digest})
+    paper = NodeChange.create("paper_0001", ["Entity", "Paper"], {"name": "DLinear"})
+    owns = EdgeChange.create("material_0001", "MATERIAL_OF", "paper_0001")
+    with_material = history.add(Changeset(nodes=(paper, material), edges=(owns,)), source="paper")
+    lost = NodeChange.delete("material_0001", ["Material"], {"path": "paper.md", "content_hash": digest})
+    disowned = EdgeChange.delete("material_0001", "MATERIAL_OF", "paper_0001")
+    history.add(Changeset(nodes=(lost,), edges=(disowned,)), source="x")
+    store: Any = Store(None, history, tmp_path)  # type: ignore[arg-type]
+    refs = ["paper_0001::1 Intro::2:3", "material_0001::1 Intro::4:4"]
+    then = call(Context(store, AT), {"op": "ReadEvidence", "source_refs": refs, "at": with_material}).details
+    assert [i["state"] for i in then["items"]] == ["available", "available"]
+    assert then["items"][0]["text"] == "2| line 2\n3| line 3\n" and then["coverage"]["at"] == with_material
+    now = call(Context(store, AT), {"op": "ReadEvidence", "source_refs": refs, "at": "main"}).details
+    assert now["missing"] == refs  # 材料节点已删除：只能按旧提交读到
+
+
+class _Moving:
+    """头提交在两次读取之间移动的版本图。"""
+
+    def __init__(self, heads: list[str]) -> None:
+        self.heads = iter(heads)
+
+    def head(self, branch: str = "main") -> str:
+        return next(self.heads)
+
+
+@pytest.mark.parametrize(
+    ("heads", "snapshot", "noted"),
+    [(["commit_000004", "commit_000004"], "commit_000004", False), (["commit_000004", "commit_000005"], None, True)],
+)
+def test_snapshot_is_given_only_when_the_head_did_not_move(heads: list[str], snapshot: str | None, noted: bool) -> None:
+    store: Any = Store(None, _Moving(heads), Path("."))  # type: ignore[arg-type]
+    got, diagnostics = store.stable(store.snapshot())
+    assert got == snapshot and bool(diagnostics) is noted

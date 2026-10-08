@@ -92,16 +92,17 @@ def search(
     budget: int = DEFAULT_BUDGET,
     continuation: int | None = None,
 ) -> dict[str, Any]:
+    before = store.snapshot()
     found = find(store, type, query, kinds, where, expand, scope, budget, continuation)
     page = found.page
     state = store.graph.local_state(page)
     artifacts = readonly(store, page) if type == ARTIFACT else {}
+    snapshot, changed = store.stable(before)
     failed = {k: v for k, v in found.coverage.get("channels", {}).items() if v.startswith("error")}
-    extra = {"missing": found.missing, "diagnostics": found.diagnostics, "expanded": found.expanded, "failed": failed}
+    diagnostics = found.diagnostics | changed
+    extra = {"missing": found.missing, "diagnostics": diagnostics, "expanded": found.expanded, "failed": failed}
     extra = {k: v for k, v in extra.items() if v}
-    view = results(
-        type, state, page, found.offset, len(found.ranked), extra | {"snapshot": store.snapshot()}, artifacts
-    )
+    view = results(type, state, page, found.offset, len(found.ranked), extra | {"snapshot": snapshot}, artifacts)
     trace = {"query": found.request, "coverage": found.coverage, "bindings": found.bindings}
     log.info("Search %s", json.dumps(trace, ensure_ascii=False, default=str))
     return view

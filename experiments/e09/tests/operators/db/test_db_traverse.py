@@ -17,6 +17,11 @@ def test_an_empty_path_reads_the_start(store: Store) -> None:
     assert out["nodes"]["method_0003"]["name"] == "DLinear"
 
 
+def test_snapshot_is_the_head_the_view_was_read_at(store: Store) -> None:
+    out = traverse(store, ["exp_0001"])
+    assert out["meta"]["coverage"]["snapshot"] == store.graph.head() and out["meta"]["diagnostics"] == {}
+
+
 def test_paths_keep_direction_and_intermediate_nodes(store: Store) -> None:
     out = traverse(store, ["method_0003"], [{"rel": "EVALUATES", "dir": "in"}, {"rel": "USES", "dir": "out"}])
     assert out["meta"]["bindings"] == [

@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from graph_vc import GraphState
+
 from ..store.store import Store
 
 
@@ -28,6 +30,24 @@ def materials(store: Store, heads: set[str]) -> dict[str, dict[str, Any]]:
     return {r["head"]: {k: r[k] for k in ("id", "path", "content_hash", "owner")} for r in rows}
 
 
+def materials_at(state: GraphState, heads: set[str]) -> dict[str, dict[str, Any]]:
+    """与 :func:`materials` 相同，但按某个提交时的状态解析（``VersionedGraph.state_at``），用于读取旧视图中的材料。"""
+    out: dict[str, dict[str, Any]] = {}
+    for head in heads:
+        node = state.nodes.get(head)
+        if node is None:
+            continue
+        owned = sorted(k.src for k in state.edges if k.dst == head and k.type == "MATERIAL_OF")
+        material = head if "Material" in node.labels else (owned[0] if owned else None)
+        if material is None:
+            continue
+        owners = sorted(k.dst for k in state.edges if k.src == material and k.type == "MATERIAL_OF")
+        props = state.nodes[material].props
+        owner = head if material != head else (owners[0] if owners else None)
+        out[head] = {"id": material, "owner": owner, **{k: props.get(k) for k in ("path", "content_hash")}}
+    return out
+
+
 def load_lines(store: Store, material: dict[str, Any]) -> list[str] | None:
     """材料的行；文件不在或哈希与登记的不一致时为 ``None``。"""
     file = store.material_root / material["path"]
@@ -39,4 +59,4 @@ def load_lines(store: Store, material: dict[str, Any]) -> list[str] | None:
     return data.decode("utf-8").splitlines()
 
 
-__all__ = ["load_lines", "materials"]
+__all__ = ["load_lines", "materials", "materials_at"]

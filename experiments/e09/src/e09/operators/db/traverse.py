@@ -78,6 +78,7 @@ def traverse(
     if continuation is not None:
         request["continuation"] = continuation
     problems: list[dict[str, str]] = []
+    before = store.snapshot()
     starts = _starts(start, problems)
     hops = [_hop(i, hop, problems) for i, hop in enumerate(path or [])]
     if len(hops) > MAX_HOPS:
@@ -120,7 +121,7 @@ def traverse(
     shown = list(dict.fromkeys(n for p in page for n in p.nodes()))
     state = store.graph.local_state(shown)
     artifacts = readonly(store, [n for n in shown if ARTIFACT in state.nodes[n].labels])
-    snapshot = store.snapshot()
+    snapshot, changed = store.stable(before)
 
     def view(count: int) -> dict[str, Any]:
         """本页前 ``count`` 条路径的读视图。"""
@@ -145,7 +146,7 @@ def traverse(
             "missing": missing,
             "coverage": coverage,
             "continuation": end if more else None,
-            "diagnostics": {},
+            "diagnostics": changed,
             "size": {"limit": LIMIT, "used": LIMIT},  # 占位：位数不少于实际
         }
         nodes = list(dict.fromkeys(n for p in kept for n in p.nodes()))
