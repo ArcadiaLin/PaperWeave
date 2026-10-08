@@ -24,6 +24,9 @@ Motivation: Later work should build on these artifacts — continuing within
 an ongoing effort and selectively reusing them across lines of inquiry.
 ```
 
+参照 AgenticScholar 的数据管理问题引入：
+**学术语料的管理尚未覆盖研究使用过程产生的持久派生数据。**
+
 再用 Figure 1 展开两个问题：
 
 3. 知识有结构：跨论文的共同对象、不同实验条件、分散在正文与表图中的依据，以及产物间的依赖。
@@ -82,6 +85,10 @@ Band 1 的行为与算子一一对应：检索与定位已有积累（search／r
 过渡：已有理解怎样被找到、组合，成为研究线路的工作基础，并随着研究继续演化？
 
 这个问题分纵向与横向两个维度。纵向是时间：同一项研究持续推进，后续工作要继承并复用此前的理解与产物；横向是范围：围绕不同想法或主题展开的研究线路，各自只需要相关的一部分积累，可以选取子集、连同必要上下文，构成自己的参照基础。
+
+新的问题
+
+Agent 使用论文知识时，会持续产生可被后续任务引用的判断、比较和报告。这些产物有来源、输入依赖、适用条件和形成时的知识状态；当它们跨任务、跨项目被选择、组合和修订时，就需要作为可查询、可校验、可版本化的数据来管理。
 
 ```text
 How can the paper-derived knowledge and artifacts that agents produce during
