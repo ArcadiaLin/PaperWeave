@@ -35,6 +35,24 @@ improvement.
 during reading and extraction; it does not promise autonomous scientific
 reasoning or inference of contradictions by the database.
 
+**The central thesis is shared accumulation by uncoordinated writers**
+(agreed 2026-10-09). The database framing is justified by many agents or
+sessions that do not coordinate yet write to one long-lived shared store (the
+original paper4agents platform idea), not by one agent reusing its own work
+within one project, where an agent with files and Git is the strongest baseline
+and may suffice. Evaluation must test a falsifiable claim rather than verify
+each mechanism in turn. Candidate hypotheses: (T1, core) without identity,
+contracts, provenance, and versions, shared accumulation degrades as writers
+and writes grow (duplicate entities, dangling references, unnoticed conflicts
+and stale artifacts), and downstream correctness falls; (T2) structured
+accumulation shifts cost from use to construction and can be amortized across
+consumers, compared against baselines given equal precomputation budgets;
+(T3, optional) structured access narrows the gap between weaker and stronger
+models. Project views and version history are evaluated inside T1's long
+multi-writer timelines rather than as standalone feature checks. The
+engineering largely carries over; the narrative and evaluation change. Exact
+hypothesis wording, workloads, corpus, and baselines remain to be agreed.
+
 Derive representative access and update workloads from the common needs of
 human researchers and agents within selected CS tasks and research processes.
 Do not attempt to enumerate all research behavior or universal research intents.
