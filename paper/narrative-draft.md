@@ -55,18 +55,19 @@ files and Git are a strong baseline and may suffice.
 - 两个写入者对同一结果给出不同读法，后写的静默覆盖前写的（冲突未被发现）；
 - 来源被修订或撤回后，依赖它的比较与报告没人知道已经过时。
 
-下游读者拿到的答案随之出错，而且错得不显眼。
+与此同时，内容按各个写入者自己的目的、措辞和粒度存放，换一个目的的读者未必找得到。下游读者拿到的答案随之出错，而且错得不显眼。
 
 ```text
 Without identity, contracts, provenance, and versions, shared accumulation
 degrades as writers and writes grow: duplicate and wrongly merged entities,
-dangling references, unnoticed conflicts, and stale artifacts. Downstream
-answers become wrong without looking wrong.
+dangling references, unnoticed conflicts, and stale artifacts. Content stored
+on each writer's own terms is hard to find for readers with other purposes.
+Downstream answers become wrong without looking wrong.
 ```
 
 ## Figure 1：多写者共享积累及其退化
 
-放在 intro 的场景图，让读者看到：（a）几个互不知情的写入者在时间线上交错，读到重叠的论文；（b）同一段写入历史落进两种库，一种无约束，一种有约束；（c）项目工作从共享库 fork、推回。四个 challenge 都要能指到图上的具体元素。这个场景同时是评测 T1 的设定，评测中完整重演。
+放在 intro 的场景图，让读者看到：（a）几个互不知情的写入者在时间线上交错，读到重叠的论文；（b）同一段写入历史落进两种库，一种无约束，一种有约束；（c）项目工作从共享库 fork、推回。五个 challenge 都要能指到图上的具体元素。这个场景同时是评测 T1 的设定，评测中完整重演。
 
 ```text
                                          time ──────────────────────────────────────────────────────▶
@@ -76,7 +77,7 @@ answers become wrong without looking wrong.
 │   W1 · proj X     reads A, B ──▶ extract ──▶ comparison table ───────────────┐                     │
 │   W2 · proj Y              reads B, C ──▶ 2nd reading of B's result ─────────┤   B: read twice,    │
 │   W3                                  reads D (revises B) ──▶ revision ──────┤   independently     │
-│   R  · later reader (not present at writes)          "which method is best on ETTh1@720?"          │
+│   R  · later reader (not present at writes)          "which method is best on ETTh1@720?"     (C5) │
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
                                                    │ same write history
@@ -114,13 +115,13 @@ Caption:
     work forks from the shared store and pushes results back (bottom).
 ```
 
-Band 1（写入者）：三个写入者各自做自己的事，互不知道对方存在。W1 为项目 X 读 A、B，抽取并做比较表；W2 为项目 Y 读 B、C，对 B 的同一个结果给出不同读法；W3 后来读到 D，D 修订了 B 的结论，W3 提交了这次修订。最后一个陌生读者 R 用这个库回答问题。写侧行为包括读、抽取、比较、判断、修订、撤回、fork、推回；读侧强调读者不在写入现场。
+Band 1（写入者）：三个写入者各自做自己的事，互不知道对方存在，而且各带不同的研究意图（intent）。W1 为项目 X 比较实验结果（I3），读 A、B，抽取并做比较表；W2 为项目 Y 核查一条主张（I5），读 B、C，对 B 的同一个结果给出不同读法；W3 后来读到 D，D 修订了 B 的结论，W3 提交了这次修订。最后一个陌生读者 R 带着另一个意图来用这个库：它要找到的内容是别人为别的目的写下的。写侧行为包括读、抽取、比较、判断、修订、撤回、fork、推回；读侧强调读者不在写入现场，也不知道内容当初是怎样组织的。
 
 Band 2（共享库）：同一段写入历史分别落进两种库。左栏无约束：重复节点、静默覆盖、未标记的过时、悬空引用，R 得到错误答案且看不出来。右栏有约束：身份收敛；B 的结果属于有据层，两种读法被标为冲突，回到原文锚点重读后记为一次修订，旧值留在历史中；依赖已修订输入的产物被标为可能过时；引用指向固定版本。解释层的判断（例如 W1、W2 各自对"哪个方法更好"的结论）则带着来源并存，不被裁决。图中数值只作示意。
 
 Band 3（项目工作）：项目 X、Y 分别从共享库的某个状态 fork，在隔离的基线上工作，再把成果推回；Y 推回时与 X 已推回的内容冲突，需要处理而不是覆盖。
 
-四个 challenge 在图中的落点：C1 对应 PatchTST 的重复与收敛；C2 对应比较表与报告所带的输入、条件和引用；C3 对应 B 的两种读法、W3 的修订与比较表的过时提示；C4 对应 Band 3 的 fork、推回与冲突。
+五个 challenge 在图中的落点：C1 对应 PatchTST 的重复与收敛；C2 对应比较表与报告所带的输入、条件和引用；C3 对应 B 的两种读法、W3 的修订与比较表的过时提示；C4 对应 Band 3 的 fork、推回与冲突；C5 对应 R 的问题：答案分散在 W1 的比较表与 W2、W3 写下的记录中，R 要在不知道它们如何组织的情况下找到它们。
 
 ## 从场景到问题与 Challenges
 
@@ -140,32 +141,46 @@ still find, trust, and build on it?
 - **库从论文原文开始。** 不预设权威快照：外部参照随时可取，有据层与解释层由写入者读论文后构建。冷启动可以从公开注册表引导身份锚点，但论文内容层面没有现成来源，正是 Agent 的工作。
 - **主张限于论文派生知识。** 机制设计与领域无关，但评测与结论只覆盖本领域；推广留给 Discussion。
 
-四个困难，各自接回图中的元素：
+五个困难，各自接回图中的元素。C1–C4 在写侧，回答 trust 与 build on；C5 在读侧，回答 find：
 
 1. **独立写入下的身份：** 不同写入者在不同时间写同一个方法、数据集或结果，要收敛到同一身份，同时不能把不同对象误并。身份规则必须显式、可检查、对所有写入者一致；粒度定在哪里（例如方法变体是否单独建节点）属于领域实例化。
 2. **自描述的贡献：** 写入者之间没有共享上下文，库是唯一的通道。产物必须自带条件、证据和输入依赖，不在场的读者才能使用或复查。
 3. **分歧与变化：** 写入者之间有分歧，会误读后修订，会撤回；源材料也会变。库要暴露冲突与过时，既不静默覆盖，也不整批拒绝：有据层的分歧回到原文修订并保留历史，解释层的判断带着来源并存。
 4. **隔离地工作，共享地交付：** 项目工作需要一个不受他人写入干扰的稳定基线，成果要能推回共享库而不破坏它，并且能回到任一历史状态。
+5. **跨写入者的可发现性：** 一个写入者为某个目的写下的内容，要能被另一个目的的读者找到。读者不知道写入者当时的措辞、粒度和组织方式，又受上下文所限，需要把结构导航与语义检索组合起来，取得有界的视图。
 
 ```text
 C1. Converge identities across independent writers without wrong merges.
 C2. Make contributions self-describing for readers who were not there.
 C3. Keep disagreement and change visible, neither overwritten nor rejected.
 C4. Isolate project work while delivering results back to the shared store.
+C5. Let readers with one purpose find what writers with another stored.
 ```
+
+挑战编号暂按提出顺序；正文是否按 find → trust → build on 重排，待定。
 
 ## Claim + Contributions：总体方法
 
-一个面向外部通用 Agent 的共享知识积累中间件：Agent 经 MCP 读写；中间件对身份、契约、来源与版本施加约束，使互不协调的写入在长期积累中不退化。
+一个面向外部通用 Agent 的共享知识积累中间件：Agent 经 MCP 读写。写侧，中间件对身份、契约、来源与版本施加约束，使互不协调的写入在长期积累中不退化；读侧，它提供从研究意图推出的检索面与访问算子，使别人写下的内容能被找到。
 
 ```text
 We propose a middleware for shared accumulation of paper-derived knowledge
-by uncoordinated agents. It enforces identity, contracts, provenance, and
-versions on every write, so that the store keeps disagreement and change
-visible instead of degrading as writers and writes grow.
+by uncoordinated agents. On the write side, it enforces identity, contracts,
+provenance, and versions, so that the store keeps disagreement and change
+visible instead of degrading as writers and writes grow. On the read side,
+it offers an intent-derived retrieval surface and access operators, so that
+readers can find what others stored for other purposes.
 ```
 
-定位：**经典机制的选择与改造。** 每项机制都有经典前身：实体解析与自然键（C1）；provenance、W3C PROV 与 nanopublication（C2）；物化视图失效、真值维护，以及 Trio、CRDT 多值寄存器、Wikidata rank 式的值并存（C3）；check-out/check-in、乐观校验与数据版本管理（C4）。我们主动引证这些前身，不主张新的并发、provenance 或版本理论。贡献在于说明 Agent 写入者要求的改变，并用实验证明哪些机制仍然必要。需要改变的有五点：
+工作负载的根：**六类研究意图 I1–I6**（发现工作与方法、理解机制与条件、组织结果并判断可比性、综合路线与发现、核查主张、取得实现资源），各有公开任务作为依据（PaperFindingBench、QASPER、TDMS-IE、ScholarQA-CS、ArxivDIGESTables、SciFact、CORE-Bench 等），分解见 `docs/designs/v2/intents_decompose.md`。它们在本文中有三种用途：
+
+- 生成写入者的任务：不同意图的写入者以不同粒度和关注点写到同一批对象上，这正是 C1、C3 压力的来源；写入者数 $K$ 由此操作化为任务意图的多样性。
+- 生成陌生读者的探针：探针有任务依据，不是为本系统量身定制的。
+- 决定检索面：对象的哪些字段与关系必须可检索，由读需求推出。
+
+意图在这里提供了工作负载。"我们的算子支持这六类意图"本身不构成贡献，因为通用图库配上合适的查询同样可以支持。
+
+定位：**经典机制的选择与改造。** 每项机制都有经典前身：实体解析与自然键（C1）；provenance、W3C PROV 与 nanopublication（C2）；物化视图失效、真值维护，以及 Trio、CRDT 多值寄存器、Wikidata rank 式的值并存（C3）；check-out/check-in、乐观校验与数据版本管理（C4）；dataspaces 的按需整合、数据库上的关键词搜索与混合检索（C5）。我们主动引证这些前身，不用主张新的并发、provenance 或版本理论。贡献在于说明 Agent 写入者要求的改变，并用实验证明哪些机制仍然必要。需要改变的有五点：
 
 - 裁决在写入时交还写入者；
 - 错误是语义性的且读起来通顺，所以保留来源与分歧比保证正确更重要；
@@ -177,32 +192,32 @@ visible instead of degrading as writers and writes grow.
 
 设计立场：**薄图、厚文档。** 图里只放身份锚点和引用关系；丰富内容放在 Artifact 文档中，文档结构由 Agent 按契约声明。领域 schema 因此只需回答"这是什么对象"，不必回答"怎样描述它"；装不进图的内容仍可进文档，代价是失去结构化检索。
 
-三项机制回应四个挑战；最后留评测的位置：
+三项贡献：
 
 ```text
-1. Accumulation Meta-Model (C1, C2)
-   Identity, provenance, and artifact semantics independent of the domain
-   vocabulary: explicit and checkable identity rules, source-referenced
-   records, and artifacts with declared inputs. A thin graph of identity
-   anchors and references; rich content stays in artifact documents.
+1. Problem and Workload
+   A formulation of shared accumulation by uncoordinated agent writers in
+   research, and an intent-grounded workload: writer tasks and reader probes
+   derived from six research intents with public task sources, plus the
+   events of revision, retraction, divergence, and branching.
 
-2. Operator Contracts for Agent-Composed Work (C2)
-   Declared input/output contracts, validation, and persistent artifacts make
-   each contribution self-describing, inspectable, and further composable.
+2. PaperWeave Design (C1–C5), adapting classical mechanisms to agent writers
+   Read side: an accumulation meta-model (identity, provenance, artifact
+   semantics independent of the domain vocabulary) with a retrieval surface
+   and access operators derived from the intents; a thin graph of identity
+   anchors and references, with rich content in artifact documents.
+   Write side: operator contracts that make contributions self-describing;
+   source-grounded records revised against their anchors with full history,
+   interpretive judgments coexisting with their sources; dependency-based
+   staleness; versioned shared and project states with fork and push.
 
-3. Versioned Shared and Project States (C3, C4)
-   Every change recorded as a commit; source-grounded records revised against
-   their anchors with full history, interpretive judgments coexisting with
-   their sources; dependency-based staleness indication; projects fork from a
-   fixed state, work in isolation, and push results back.
-
-4. Evaluation
+3. Evaluation
    A falsifiable degradation claim under growing writers and writes against
    strong baselines (files + Git, RAG, the same schema without constraints),
    per-mechanism ablations, and amortized construction/use cost.
 ```
 
-机制 3 的工程落点很小，系统沿用现有原型：
+写侧版本与修订机制的工程落点很小，系统沿用现有原型：
 
 - 解释层的并存已经成立：Observation 没有自然键，Artifact 每次调用都新建一个。
 - 有据层的修订需放宽 `docs/designs/v2/commit_contract.md` §5，该节目前把内容变化一律视为冲突并整批拒绝。放宽后，附锚点与理由的修订被接受，锚点与理由存入 graph-vc 提交的 `message` / `meta`。
@@ -212,11 +227,11 @@ visible instead of degrading as writers and writes grow.
 
 责任边界是立论核心，在新命题下更自然：组合的规划在 Agent 侧，Agent 把意图翻译成算子计划，翻译是否忠实单独评估；中间件校验计划结构与引用、执行操作、持久化产物并记录谱系与状态变化。写入者之间有分歧时，库无权判断谁对，只负责让分歧可见、可追溯。我们管理 Agent 的写入，而不是替 Agent 判断。
 
-随后以 Figure 2 介绍整体架构：多个 Agent 经 MCP 调用算子契约；每次写入经统一提交进入共享库；项目从共享库的固定状态 fork，在隔离的状态上工作并推回。回看 Figure 1 的写入历史如何沿这条链路落地。评测结果出来后，在 intro 末尾补主要发现。
+随后以 Figure 2 介绍整体架构：多个 Agent 经 MCP 调用算子契约；读者经访问算子在检索面上定位、遍历与读取证据；每次写入经统一提交进入共享库；项目从共享库的固定状态 fork，在隔离的状态上工作并推回。回看 Figure 1 的写入历史如何沿这条链路落地。评测结果出来后，在 intro 末尾补主要发现。
 
 # 后续章节大纲
 
-组织方式借鉴 AgenticScholar：一套工作负载规约作为全文中枢，复用三处：related work 能力矩阵的行、机制设计的需求来源、评测小节的组织轴。中枢由三部分组成，与评测草案对齐：**写入者模型**（轮流写、两条写路径：直写共享库，或 fork → 项目工作 → 推回）、**事件类型**（误读后修订、撤回、材料变化、写入者分歧、分支与推回、回看历史状态）、**读侧阶梯 L0–L4**（存储语义、关联检索、组合、有状态工作、端到端）。挑战编号、机制编号、评测小节一一对应；Figure 1 的场景在评测中完整重演。Related work 前置到 intro 之后，直接叙述我们与各路线的区别。
+组织方式借鉴 AgenticScholar：一套工作负载规约作为全文中枢，复用三处：related work 能力矩阵的行、机制设计的需求来源、评测小节的组织轴。中枢以六类研究意图 I1–I6 为根，由四部分组成，与评测草案对齐：**意图**（写入者任务与读者探针的共同来源）、**写入者模型**（每个写入者带一个意图任务，轮流写，两条写路径：直写共享库，或 fork → 项目工作 → 推回）、**事件类型**（误读后修订、撤回、材料变化、写入者分歧、分支与推回、回看历史状态）、**读侧阶梯 L0–L4**（存储语义、关联检索、组合、有状态工作、端到端）。挑战编号、机制编号、评测小节一一对应；Figure 1 的场景在评测中完整重演。Related work 前置到 intro 之后，直接叙述我们与各路线的区别。
 
 2. **Related Work and Positioning.** 先用一段简述中枢规约，作为能力矩阵的行。主体按机制组织：每个挑战一段，依次写经典前身、Agent 场景下的改变、我们的设计。底稿见讨论记录 §2–§3。反面参照是 truth discovery 与按引用排名：两者都由系统裁决，我们不这样做。随后按路线补充与相邻系统的区别：
    - 学术知识图谱与文献系统：以文档为中心；ORKG 虽是众包多写者，但写入者是人、靠模板整理，不管理 Agent 的使用产物与项目分支。
@@ -227,14 +242,14 @@ visible instead of degrading as writers and writes grow.
    - ontology engineering 与 schema induction：与本文正交，说明领域词表问题有人在做、不是我们的贡献。
 
    能力矩阵区分原生支持、组合支持、需外部推理。上述多写者知识库与多 Agent 记忆的文献是否已在 `references/` 中，待核实。
-3. **Problem and Workloads.** 把中枢规约展开为可评测的形式：写入者模型、事件类型、读侧阶梯，各自给出具体输入、所需输出、数据状态与操作序列。显式写出几条假设：不协调是语义上的而非并发事务；领域词表给定；库不判断谁对（可问责而非权威，按有据层与解释层区分）；起点只有论文原文与外部标识。明确责任边界。
+3. **Problem and Workloads.** 把中枢规约展开为可评测的形式：六类意图及其任务来源与必要信息（取自 intents 分解），写入者模型、事件类型、读侧阶梯，各自给出具体输入、所需输出、数据状态与操作序列。显式写出几条假设：不协调是语义上的而非并发事务；领域词表给定；库不判断谁对（可问责而非权威，按有据层与解释层区分）；起点只有论文原文与外部标识。明确责任边界。
 4. **System Overview.** Figure 2：共享库、产物、提交历史与项目状态的整体关系；用 Figure 1 中一段写入历史端到端走查各部件。
-5. **Accumulation Meta-Model.** Entity / Concept / Content / Artifact 主类与系统记录；身份规则（精确键、标识、重复与歧义的处理）、材料引用、来源与派生谱系；薄图、厚文档的分工。CS 论文的领域词表作为实例单列（回应 C1、C2）。
-6. **Operator Contracts and Artifact Persistence.** 访问算子与 Agent 算子的输入输出契约；中间件校验计划、保存产物与声明依赖，使贡献自描述、可复查、可继续组合（回应 C2）。
+5. **Accumulation Meta-Model.** Entity / Concept / Content / Artifact 主类与系统记录；身份规则（精确键、标识、重复与歧义的处理）、材料引用、来源与派生谱系；薄图、厚文档的分工；从意图推出的检索面（描述面与检索子集、关系为何进入检索面）。CS 论文的领域词表作为实例单列（回应 C1、C2、C5）。
+6. **Operator Contracts and Artifact Persistence.** 访问算子（Search、Resolve、Traverse、ReadEvidence）的契约：混合检索中关系的作用、有界视图、分歧与过时随结果返回（回应 C5）。Agent 算子的输入输出契约：中间件校验计划、保存产物与声明依赖，使贡献自描述、可复查、可继续组合（回应 C2）。以意图的数据流说明两类算子如何组合。
 7. **Versions, Revision, and Project States.** 统一提交与完整变更记录；有据层的修订（附锚点与理由）与解释层的并存；撤回；核对写成 Verify / Check 产物；基于依赖的过时提示；fork、推回与冲突处理；历史访问。区分产物输入谱系与提交祖先（回应 C3、C4）。
 8. **Implementation.** 现有原型：属性图与材料存储、graph-doc 与 Commit、graph-vc 统一写入与版本、算子契约到 Cypher 与后端的映射、MCP 接入。
 9. **Evaluation.**
-   - **T1 主实验：** 写入者数 $K$ 与写入量增长下的库健康度（重复率、误合并率、悬空引用率、冲突检出率、过时识别及误报），由独立读者以固定探针查询测下游正确性；注入事件即 Figure 1 的重演。
+   - **T1 主实验：** 写入者数 $K$（意图任务的多样性）与写入量增长下的库健康度（重复率、误合并率、悬空引用率、冲突检出率、过时识别及误报），由独立读者以固定探针查询测下游正确性；探针按 I1–I6 设计，落在多写者交汇处；注入事件即 Figure 1 的重演。
    - **消融：** 逐项去掉身份、契约、来源、版本。
    - **T2 成本账：** 构建成本前移、按使用者摊销，盈亏点 $N^* = C_{\text{build}}/(c_{\text{base}}-c_{\text{ours}})$；baseline 给相同预计算预算。
    - **读侧阶梯：** L0–L4，L4 为按时间切分的实验设计任务。
@@ -253,6 +268,7 @@ visible instead of degrading as writers and writes grow.
 
 General-purpose Agent → Agent-facing Access Interface → PaperWeave DBMS
 
+```text
 Agent-facing Interface
 ├── MCP
 │   ├── tools
@@ -263,3 +279,4 @@ Agent-facing Interface
     ├── capability descriptions
     ├── usage semantics
     └── workflow instructions
+```
