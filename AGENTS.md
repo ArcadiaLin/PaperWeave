@@ -2,209 +2,240 @@
 
 ## Overview
 
-This repository supports an ongoing research project. The tentative publication
-target remains **SIGMOD**.
+This repository supports an ongoing research project targeting **SIGMOD**. The
+system is called PaperWeave. The repository name CachePlan is historical; cache
+optimization and inference scheduling are no longer research objectives.
 
-The current research direction (updated 2026-10-05) is:
+This file states the current agreed framing. Earlier framings (single-agent
+experience reuse, domain-specific Agent Memory, operator-centric contributions)
+are superseded and remain in Git history; do not resume them.
 
-> **Data-management middleware for persistent paper-derived knowledge,
-> its use artifacts, and versioned project knowledge views in CS research
-> workflows.**
+## Research Direction
 
-The current core question is:
+### Problem
 
-> **How can a semantic data model and composable operators support the
-> representation, querying, composition, and maintenance of accumulated
-> paper-derived knowledge and its use artifacts through project knowledge views
-> and recorded version histories for external agents in bounded CS research
-> workloads?**
+> **How can a long-lived store accumulate paper-derived knowledge and artifacts
+> written by many agents that do not coordinate, so that later readers can still
+> find, trust, and build on it?**
 
-The motivating application remains domain-specific Agent Memory. Papers and
-associated materials are sources; the managed objects are accumulated knowledge,
-interpretations, semantic relationships, their evidence, and the artifacts
-produced when agents use this knowledge. The agreed narrative refines the
-original focus on reusing paper-reading experience: agents continually produce
-extracted records, comparative judgments, and syntheses, which must be managed
-together with their subjects, conditions, source materials, and prior inputs.
-Subsequent tasks should be able to discover, inspect, and compose earlier work
-and contribute new artifacts as materials and requirements evolve. The research
-focus is the middleware's data-management mechanisms and support for downstream
-work; this does not establish general strategy learning or autonomous scientific
-improvement.
-"Paper understanding" refers to interpretations produced by external agents
-during reading and extraction; it does not promise autonomous scientific
-reasoning or inference of contradictions by the database.
+**Setting: shared accumulation by uncoordinated writers.** Many agents or
+sessions with separate tasks write to one long-lived store without knowing what
+the others wrote; the store is their only channel, and later readers were not
+present when it was written. Writers may be different people's agents, different
+projects, or one person's many independent sessions over months. The public
+platform (paper4agents) is the long-term vision. One agent reusing its own work
+within one project is **not** the setting: there, files and Git are the strongest
+baseline and may suffice.
 
-**The central thesis is shared accumulation by uncoordinated writers**
-(agreed 2026-10-09). The database framing is justified by many agents or
-sessions that do not coordinate yet write to one long-lived shared store (the
-original paper4agents platform idea), not by one agent reusing its own work
-within one project, where an agent with files and Git is the strongest baseline
-and may suffice. Evaluation must test a falsifiable claim rather than verify
-each mechanism in turn. Candidate hypotheses: (T1, core) without identity,
-contracts, provenance, and versions, shared accumulation degrades as writers
-and writes grow (duplicate entities, dangling references, unnoticed conflicts
-and stale artifacts), and downstream correctness falls; (T2) structured
-accumulation shifts cost from use to construction and can be amortized across
-consumers, compared against baselines given equal precomputation budgets;
-(T3, optional) structured access narrows the gap between weaker and stronger
-models. Project views and version history are evaluated inside T1's long
-multi-writer timelines rather than as standalone feature checks. The
-engineering largely carries over; the narrative and evaluation change. Exact
-hypothesis wording, workloads, corpus, and baselines remain to be agreed.
+"Uncoordinated" is semantic, not transactional: writers do not know each other's
+content and interpretations. Writes may run in turn; atomicity and isolation are
+left to backend transactions.
 
-Derive representative access and update workloads from the common needs of
-human researchers and agents within selected CS tasks and research processes.
-Do not attempt to enumerate all research behavior or universal research intents.
-Intents motivate workloads; concrete inputs, required outputs, data states, and
-operation sequences must make those workloads evaluable. The selected tasks and
-benchmark remain to be agreed.
+**Domain and claim scope.** The paper is a domain system paper for paper-derived
+knowledge. Research literature is chosen for properties that make the problem
+acute and evaluable: heavy write overlap on popular methods, datasets, and
+benchmarks; identity that is hard yet anchored by external identifiers; natural
+disagreement and change (conditions, misreadings, arXiv versions, errata);
+time-split evaluation against what later papers actually did; public data and
+existing gold resources; long-lived knowledge with high re-reading cost. Claims
+and results cover this domain only. The mechanisms are domain-agnostic by design,
+and generalization is a discussion point, not a claim. Write overlap is the key
+premise and must be verified on the chosen corpus.
 
-External agents interpret tasks and materials, make semantic judgments, and
-submit explicit operations or plans. The middleware manages and executes those
-operations without internal LLM reasoning about identity, claim relations, or
-research conclusions. Retrieving a stored judgment is distinct from producing
-one. Agent operator contracts describe the inputs and outputs of extraction,
-judgment, and synthesis: external agents supply semantic content, and the
-middleware validates declared structure and references and persists artifacts.
-Organizing records across papers, such as comparison matrices, is also an agent
-contract: record contents reside in artifact documents rather than the graph,
-so the middleware does not compute over them; it validates only the declared
-table structure and references. The placement of embedding computation remains
-an open implementation boundary.
+### Challenges
 
-Use database provenance and persistent derived data to explain this design.
-Semantic objects provide discovery and interpretation anchors; source and
-derivation lineage connects materials, knowledge records, and use artifacts.
-The current Artifact design records declared input dependencies, operation
-parameters, and formation information. It does not capture a complete reasoning
-trace or establish that a judgment is true. Explicitly adopting an artifact's
-content as an Observation is also distinct from independent verification.
-Source-material change is already considered through fixed material references,
-content hashes, and dependency-based possible-staleness indications. These
-mechanisms support re-examination; they do not imply automatic incremental view
-maintenance or semantic reassessment. Agent operators and Artifact persistence
-remain design contracts awaiting implementation and evaluation.
+- **C1. Identity under independent writes.** Converge identities across writers
+  without wrong merges. Identity rules must be explicit, checkable, and uniform;
+  their granularity is a domain instantiation.
+- **C2. Self-describing contributions.** Artifacts carry their conditions,
+  evidence, and inputs so readers who were not there can use or check them.
+- **C3. Disagreement and change.** Keep competing judgments with their sources
+  and surface conflicts and staleness, neither overwriting nor rejecting them.
+- **C4. Isolated work, shared delivery.** Project work runs on a stable base and
+  delivers results back without breaking the shared store; any historical state
+  remains reachable.
 
-**Project knowledge views, complete submission records, and version history
-are required parts of the research and system design** (confirmed 2026-10-05).
-Treat them as integral to knowledge management and use, including in the
-introduction's motivation, challenges, proposed design, and the overall paper
-narrative. They are not optional extensions or future-work candidates.
-Project views select and organize knowledge, artifacts, and required context
-from a defined baseline for continued use within a project. Submission records
-and version history must account for the changes establishing and evolving that
-state, including knowledge ingestion and Artifact writes, and support historical
-inspection and independent project or branch evolution. Distinguish an artifact's
-input lineage from a knowledge state's commit ancestry. IngestBatch is the
-starting point for complete change recording; current batch statistics alone
-do not provide these version semantics. View-selection algorithms, snapshot or
-delta storage, submission granularity, branch interfaces, and integration rules
-remain to be specified and evaluated. Required scope does not mean these
-mechanisms are already implemented or their effectiveness established.
+Without identity, contracts, provenance, and versions, shared accumulation is
+expected to degrade as writers and writes grow: duplicate and wrongly merged
+entities, dangling references, unnoticed conflicts, and stale artifacts, so that
+downstream answers become wrong without looking wrong. This is the core
+hypothesis (T1).
 
-The technical direction is to give the data model and operators explicit
-database semantics: types, identity and provenance rules, constraints, input and
-output contracts, composition, and mappings to backend execution. Property graphs
-and Cypher are the current implementation foundation. Representation fidelity,
-semantic preservation, and invariant-preserving updates are candidate formal
-goals; one-to-one mappings, a complete new algebra or compiler, and expressive
-power beyond Cypher are not established requirements or contributions. An agent
-may translate intent into an operator plan, but intent fidelity must be assessed
-separately from plan validation and backend execution correctness.
+### Approach and positioning
 
-Cache optimization, KV-cache management, and cache-aware scheduling are no
-longer research objectives. The repository name CachePlan is historical; it does
-not constrain the new direction or prescribe an inference backend.
+PaperWeave is a middleware offered to general-purpose agents through MCP. It
+enforces identity, contracts, provenance, and versions on every write.
 
-The earlier literature mini-bench contains useful task and data-design ideas.
-Its scope can be developed in greater depth, but its previous role as an
-execution-optimization workload no longer applies. Related-work comparisons
-should emphasize data-management middleware, scholarly knowledge systems, and
-structured Agent Memory. AgenticScholar remains a relevant reference for
-workload-driven design and system evaluation; its internal LLM operators are not
-the responsibility boundary adopted here, and its relevance does not establish
-this project's novelty or effectiveness.
+- **Classical mechanisms, adapted.** Each mechanism has a classical predecessor:
+  entity resolution and natural keys (C1); provenance, W3C PROV, and
+  nanopublications (C2); materialized-view invalidation, truth maintenance, and
+  coexisting alternatives as in Trio, CRDT multi-value registers, and Wikidata
+  ranks (C3); check-out/check-in, optimistic validation, and data versioning
+  (C4). Cite them explicitly. The contribution is selecting and adapting them for
+  agent writers and showing empirically which ones matter, not new concurrency,
+  provenance, or versioning theory. What agent writers change: adjudication
+  returns to the writer at write time; errors are semantic and fluent;
+  recomputing derived content is costly and nondeterministic, so staleness is
+  flagged, not maintained; readers will not query provenance, so conflicts and
+  staleness must travel with query results; the MCP interface is the contract,
+  and bypass is measurable. See
+  `docs/discussions/2026-10-10-challenges-and-classical-mechanisms.md`.
+- **Meta-model, not schema.** The contribution is the accumulation meta-model
+  (Entity / Concept / Content / Artifact, identity, provenance, artifact
+  semantics). The domain type vocabulary is given and treated as a parameter;
+  schema design and evolution are orthogonal (ontology engineering, schema
+  induction). A2 and A3 share one schema, so their difference isolates the
+  mechanisms.
+- **Thin graph, thick documents.** The graph holds identity anchors, references,
+  and the commit log; rich content lives in artifact documents whose structure
+  agents declare by contract. Content that fits no type can still go into a
+  document, at the cost of structured retrieval.
+- **Accountability, not authority.** The store never decides who is right and
+  does not rank by usage or citation. Authority lies outside the store, in the
+  fixed source materials and external identifiers it points to. Two layers:
+  - **Grounded layer:** entity identities and `stated_by: paper` records
+    (Experiment, Claim, Contribution). Correctness means fidelity to the source
+    and is checkable against anchors. A disagreement is a temporary error:
+    single value, revision with anchor and reason, and full history.
+  - **Interpretive layer:** Observations, `stated_by: agent` records,
+    `SUPPORTS` / `OPPOSES`, Artifacts, and interpretive Concepts (Issue,
+    Proposition, method hierarchy). These hold multiple values that coexist with
+    provenance, and there is no adjudication.
 
-The required scope includes the semantic model and operators, persistent use
-artifacts and provenance, project knowledge views, and submission/version
-history. Specific algorithms, lifecycle contracts, benchmark tasks, and the
-evaluation protocol remain to be refined. Other candidate ideas from discussion
-are not automatically settled requirements; additional agents or workflow
-complexity do not by themselves constitute a research contribution.
+  Checking a record against its source is written as a Verify or Check artifact.
+  Adopting artifact content as an Observation is not independent verification.
+- **Responsibility boundary.** External agents interpret materials, make semantic
+  judgments, and plan operator calls. The middleware validates structure and
+  references, executes operations, persists artifacts, and records lineage and
+  state changes. It performs no internal LLM reasoning about identity, claim
+  relations, or research conclusions. Intent fidelity is assessed separately
+  from plan validation and execution correctness. Artifacts record declared
+  inputs, parameters, and formation information. They are not complete
+  reasoning traces and do not establish truth.
+- **Project views and version history are required scope.** Every write is a
+  commit. Projects fork from a fixed state and push back. An artifact's input
+  lineage is distinct from a state's commit ancestry. These mechanisms are
+  evaluated inside T1's multi-writer timelines, not as standalone feature
+  checks.
 
-## Research Scope and Evaluation
+## System and Engineering Status
 
-Candidate areas include:
+The existing prototype is the system; no new subsystem is planned for the
+current story. E09 is experiment preparation for T1, not a finished product.
 
-- extracting and relating claims, methods, experimental settings, results, and
-  their supporting evidence across text, tables, figures, and appendices;
-- identifying associated datasets, benchmarks, code, models, and other resources,
-  including their roles in a paper and correspondence to external materials;
-- integrating entities and relationships across papers into persistent records
-  with provenance and version information;
-- evaluating whether the constructed library supports useful downstream work.
+| Component | Location | Role |
+| --- | --- | --- |
+| Data model, `NameKey` identity | `experiments/e09/src/e09/model/`, `docs/designs/v2/graph_model_v2.md` | C1 shared identity rules |
+| graph-doc + Commit (dry_run → blocking items → `confirm`) | `packages/graph-doc`, `experiments/e09/src/e09/commit/`, `docs/designs/v2/commit_contract.md` | C1 write-time adjudication by the writer |
+| graph-vc changesets with before/after values, commit records, revert | `packages/graph-vc` | Unified write log; carrier of C3 revisions |
+| Log / Show / Diff / AsOf | `experiments/e09/src/e09/interfaces/`, `docs/designs/v2/versioning_interfaces.md` | Historical inspection |
+| DB operators: Search, Resolve, Traverse, ReadEvidence, Commit | `experiments/e09/src/e09/operators/db/`, `docs/designs/v2/operators.md` | Read side for readers who were not there |
+| Agent operators → Artifact (`USED`, `Material` hash) | `experiments/e09/src/e09/operators/agent/`, `experiments/e09/src/e09/artifact/` | C2; the interpretive layer coexists by construction |
+| `_stale` computed at read time | `experiments/e09/src/e09/artifact/stale.py` | C3 staleness indication |
+| MCP server, pi workspace | `experiments/e09/src/e09/mcp/`, `make workspace` | Writers are pi session sequences with fixed tasks |
+| Fork / Merge skill | `docs/designs/v2/project_views.md` | C4; designed, not implemented |
+| I3 arms S / S-Cypher / R0 | `experiments/e09/i3/` | Prototypes of A3 / A2 / A0 |
 
-These are areas to refine, not a requirement to implement all of them. Neither a
-full ReAct agent nor a particular operator architecture is assumed necessary.
-P4A is inherited code and task-design material, not an independently validated
-benchmark for the new direction.
+Agreed engineering changes:
 
-Project-view construction and continued use, complete change recording, and
-versioned state access are required evaluation areas. Select concrete workloads
-for them alongside the knowledge-utilization tasks; their benchmark instances
-and quality criteria still require agreement.
+- **Grounded-layer revision.** Relax `commit_contract.md` §5, under which any
+  content change is rejected: allow revising `stated_by: paper` records when an
+  anchor and a reason are supplied, both stored in the graph-vc commit
+  `message` / `meta`. Without them, the write is still rejected.
+- **`_stale` gains an "input revised" reason**, computed by comparing commits
+  made after the artifact was formed.
+- **C1 merge and split are not implemented.** Duplicates and wrong merges are
+  measured, not repaired, and reported as a limitation.
+- **Retraction** uses existing deletion changesets or revert on the grounded
+  layer and an `OPPOSES` Observation on the interpretive layer. No new
+  retraction semantics.
+- **Writers run in turn.** This sidesteps dedup running outside the commit lock.
+- **Model freeze.** Add no new entity types or fields without agreement.
 
-**The agent is a general-purpose agent using the middleware through MCP**
-(set by the user on 2026-10-06). The research point is the data-management
-system offered to general agents, not a purpose-built research agent. Experiment
-runs therefore use the default pi configuration — its own system prompt and
+Agent operator code exists. Its completeness and tests have not been re-verified
+against the current contracts.
+
+**The agent is a general-purpose agent using the middleware through MCP.** The
+research point is the data system offered to general agents, not a purpose-built
+research agent. Runs use the default pi configuration: its own system prompt and
 built-in tools, with no replacement prompt, tool whitelist, or pi-specific
-bridge — and connect the operators as an MCP server. What the experiment
-controls is the working directory: each run starts in a directory outside the repository that
-holds only the MCP registration, pi's session settings and sessions, and a
-launcher script (pi loads `AGENTS.md` and similar context files from the
-working directory and its parents). How to operate each tool belongs in its MCP tool description. The
-general agent keeps its ordinary file and shell access; evaluation audits
-reads of source materials that bypass the middleware rather than blocking them.
+bridge. The operators connect as an MCP server. The experiment controls only the
+working directory, which is outside the repository and holds only the MCP
+registration, pi's session settings and sessions, and a launcher script. pi
+loads `AGENTS.md` and similar files from the working directory and its parents.
+Tool usage belongs in MCP tool descriptions. The agent keeps ordinary file and
+shell access; evaluation audits reads of source materials that bypass the
+middleware rather than blocking them.
+
+## Evaluation
+
+The evaluation tests falsifiable hypotheses rather than checking each mechanism
+in turn. Details are in `docs/designs/v2/evaluation_draft.md`.
+
+- **T1 (core): degradation.** Under growing writers and writes, A3 degrades
+  significantly more slowly than the baselines in store health and downstream
+  correctness. Falsified if, at affordable scale, A3's slope is not
+  significantly better than A0's.
+- **T2: amortization.** Construction cost shifts from use to build and amortizes
+  across consumers. Baselines get equal precomputation budgets.
+- **T3 (optional):** structured access narrows the gap between weaker and
+  stronger models.
+- **Arms:** A0 files + Git (strongest configuration); A1 RAG; A2 the same schema
+  on bare Neo4j + Cypher; A3 the full system. A0 and A3 share the file layer.
+  Ablations remove identity, contracts, provenance, or versions one at a time.
+- **Start state:** source papers and external identifiers only. Writers build
+  the grounded and interpretive layers. There is no pre-built authoritative
+  snapshot. Optional bootstrap of identity anchors (paper metadata from public
+  registries, a few curated task and method seeds) must be identical across arms
+  and must never overlap the gold. Wikidata, OpenAlex, and similar sources serve
+  as identifier namespaces, not as a starting snapshot. Read-side controlled
+  comparisons use T1 checkpoint snapshots.
+- **Gold by layer:** the grounded layer is checked against source anchors. The
+  interpretive layer is checked for whether disagreement is preserved and
+  visible, not for truth.
+
+Open (to agree before implementation):
+
+- what $K$ (the number of writers) operationalizes;
+- the primary metric comparable across all arms (candidate: downstream
+  correctness, with store health as a diagnostic);
+- probe design targeting multi-writer intersections;
+- whether bootstrap versus empty start is a factor;
+- whether phase 1 of T1 uses direct writes only, with Fork / Merge events
+  added later;
+- corpus (LTSF is a candidate; verify write overlap);
+- judge protocol and statistics. See `evaluation_draft.md` §11.
 
 Evaluation principles:
 
-- **Evaluate middleware support first.** Compare supported query and update
-  workloads, result correctness, execution and interaction costs, scalability,
-  and maintenance behavior. Downstream task outcomes provide application
-  evidence but are not the sole or primary measure of the middleware's value.
-  Include construction and update costs when assessing reuse benefits.
+- **Evaluate middleware support first.** Report correctness, interaction and
+  execution cost, scalability, and maintenance behavior. Downstream outcomes are
+  application evidence, not the sole measure. Include construction and update
+  cost when assessing reuse.
 - **Make capability comparisons operational.** Distinguish native support,
-  support through composition, and support requiring additional implementation
-  or external reasoning. A feature table alone does not demonstrate correctness,
-  efficiency, or superiority over a general-purpose backend with suitable queries.
+  support through composition, and support requiring external reasoning. A
+  feature table proves nothing by itself.
 - **Verify semantic correctness.** Schema validity and evidence links alone do
-  not establish that extracted facts or relationships are supported.
-- **Separate claims from verification.** A paper's release claim, observed
-  repository contents, successful execution, and experimental reproduction are
-  distinct findings. Preserve uncertainty when evidence is insufficient.
-- **Keep provenance and versions explicit.** Cross-paper integration must not
-  silently merge incompatible entities, experimental conditions, or versions.
-- **Use independent quality evaluation and strong baselines.** Compare methods
-  under equivalent information access and declared budgets; distinguish the
-  effects of reasoning, retrieval, validation, and model choice. Separate
-  controlled evaluations on the same stored knowledge from evaluations of the
-  entire construction-and-use process, and isolate external-agent behavior from
-  middleware execution where possible.
-- **Evaluate the data product.** Extraction quality, relationship correctness,
-  evidence support, and downstream usefulness matter alongside construction
-  cost. Do not infer library quality solely from fluent answers.
-- **Agree on the benchmark before implementing it.** Fix the initial task scope,
-  evidence environment, and quality criteria through discussion. Rich task design
-  does not require building a feature-complete literature-management product.
+  not show that facts or relations are supported. Do not infer library quality
+  from fluent answers.
+- **Separate claims from verification.** A paper's claims, observed repository
+  contents, successful execution, and reproduction are distinct findings.
+  Preserve uncertainty.
+- **Use strong baselines under equal access and budgets.** Separate the effects
+  of reasoning, retrieval, validation, and model choice. Separate controlled
+  evaluations on the same stored knowledge from whole construction-and-use runs.
+- **Report negative results.** If A0 never loses, report the range where files
+  and Git suffice and narrow the claim. Do not switch to a favorable workload.
+- **Agree on the benchmark before implementing it.**
 
 ## Repository Purpose
 
 This is a research repository for developing and evaluating paper-processing and
 literature-resource construction methods. Prefer implementations that are easy
 to understand, instrument, reproduce, and compare experimentally. Avoid large
-architectural changes unless they directly support the research.
+architectural changes unless they directly support the research. P4A, E08, and
+earlier experiments are inherited material, not validated benchmarks for the
+current direction.
 
 ## Working Principles for Agents
 
@@ -244,11 +275,7 @@ default instinct to finish a request end-to-end.
    branching before committing. Committing still happens only when the user asks.
 
 5. **Never edit `docs/progress.md`.** The user writes this file themselves; agents
-   must not create, modify, or reformat it, even when asked to update other docs
-   (set by the user on 2026-09-27). After finishing a meaningful piece of work,
-   end the reply with a short suggested progress entry the user can paste or
-   adapt: what was done, key results or artifacts (with paths), open issues, and
-   the next step. Keep it a suggestion in the reply, not a file change.
+   must not create, modify, or reformat it, even when asked to update other docs. After finishing a meaningful piece of work, end the reply with a short suggested progress entry the user can paste or adapt: what was done, key results or artifacts (with paths), open issues, and the next step. Keep it a suggestion in the reply, not a file change.
 
 ## Environment and Notebooks
 
@@ -308,17 +335,25 @@ Rules:
 
 ## Documentation and Context
 
-Earlier tracked discussion documents were pruned on 2026-09-09 and 2026-09-15
-and remain available in Git history. Do not restore or read them in bulk by
-default. Current design discussion is in
-`docs/discussions/2026-09-15-p4a-operators-skills-and-activities.md`, alongside
-the evolving narrative in `paper/narrative-draft.md`; proposals there remain
-tentative unless agreed with the user.
+Current documents:
 
-The retained `docs/literature/2026-AgenticScholar.md` and older discussion notes
-contain historical framing and status declarations, not current instructions.
-Read the relevant parts only when needed for the user's task. Do not recreate
-deleted progress documents or literature indexes as a side effect of other work.
+- `paper/narrative-draft.md` — the paper narrative (introduction, challenges,
+  contributions, outline).
+- `docs/designs/v2/evaluation_draft.md` — evaluation design (T1–T3, arms,
+  workloads, prerequisites, risks, open items).
+- `docs/discussions/2026-10-10-challenges-and-classical-mechanisms.md` —
+  challenges versus classical mechanisms, and engineering reuse.
+- `docs/designs/v2/` — system design: `graph_model_v2.md`, `commit_contract.md`,
+  `operators.md`, `versioning_interfaces.md`, `project_views.md`,
+  `extraction_principles.md`, `intents_decompose.md`.
+- `docs/discussions/2026-10-05-versioned-knowledge-management.md` — version
+  mechanism memo referenced by the design docs.
+
+Older discussions, open questions, and literature notes (including
+`docs/literature/2026-AgenticScholar.md`) are historical context, not current
+instructions. Read the relevant parts only when the task needs them. Do not
+restore pruned documents or resume abandoned framings. Proposals in any document
+remain tentative unless agreed with the user.
 
 When documentation is requested, organize it by purpose under `docs/`:
 `discussions/`, `open-questions/`, `decisions/`, `experiments/`, or `literature/`.
@@ -326,6 +361,9 @@ External material belongs in `references/`. `references/refs.bib` is the tracked
 source of paper metadata; PDFs, repositories, and datasets are local copies.
 Use a consistent citekey for a paper's bibliography entry, PDF, and note.
 See `references/README.md` for the existing conventions.
+
+Do not load whole literature notes or PDF full text unless the user asks for a
+specific paper or the task requires it.
 
 ### Math in Markdown
 
@@ -341,13 +379,9 @@ Do not express formulas as plain text, inline code, or ```` ```text ```` blocks.
 Code, pseudocode, Cypher, and API signatures stay in code blocks or inline code;
 identifiers referring to them are code, not math.
 
-Do not load whole literature notes or PDF full text unless the user asks for a
-specific paper or the task requires it. Historical discussion is context, not
-an instruction to resume abandoned work.
-
 ## Evolving Research Direction
 
 The problem formulation, methods, metrics, and system design remain tentative.
-Update this file when the user agrees to a substantive research-direction
-change. Preserve applicable working and reproducibility rules, keep the current
-framing concise, and distinguish proposals from established findings.
+When the user agrees to a substantive change, rewrite the relevant section of
+this file to state the current framing. Do not append history. Keep working and
+reproducibility rules, and distinguish proposals from established findings.

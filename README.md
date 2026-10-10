@@ -4,30 +4,35 @@
 
 ## 概览
 
-当前研究方向是：**面向 Agent 论文阅读的可复用经验的数据管理系统**，管理由论文阅读持续
-沉淀下来的知识（解释、判断、综述等语义产物）、它们的使用产物（Artifact）与
-溯源，以及项目级的知识视图和版本历史，供外部 Agent 在有界任务中发现、组合、
-复用并继续积累。
+PaperWeave 研究的问题是：**许多互不协调的 Agent 长期往同一个库里写论文派生知识，
+这个库怎样才不退化，使后来的读者仍能找到、信任并在其上继续工作。** 写入者可能是
+不同人的 Agent、不同项目，或同一个人几个月里上下文互不相通的大量 session；库是它们
+之间唯一的通道。单个 Agent 在一个项目里复用自己的产物不在此列，那里文件加 Git 可能
+已经够用。
 
-核心设计：一个语义数据模型和一套操作的算子，支撑论文衍生知识及其使用
-产物的表示、查询、组合与维护——通过项目知识视图和记录的版本历史——服务于
-有界 CS 研究工作负载中的外部 Agent。
+PaperWeave 是经 MCP 提供给通用 Agent 的中间件，对每次写入施加身份、契约、来源与版本
+约束。它借用并改造经典机制：实体解析、provenance、值并存与过时提示、数据版本管理。
+库不判断谁对，只负责可问责：有据层的记录（论文自述的实验、结果、主张）可以对照原文
+核对，有分歧时回到锚点修订并保留历史；解释层的判断与产物带着来源并存。语义判断由
+外部 Agent 做，中间件负责校验、持久化与记录，内部不做 LLM 推理。
 
-设计边界：外部 Agent 负责语义判断并提交显式操作；中间件负责校验、组织、持久化
-与执行，内部不做关于研究结论的 LLM 推理。属性图与 Cypher 是当前的实现基础。
-这里描述的模型与算子仍是设计契约，正在实现与评估中，尚不代表已完成的结论。
+评测检验一个可证伪的假设：没有这些约束时，共享积累会随写入者和写入量增长而退化。
+基线包括文件加 Git、RAG，以及同一 schema 的裸 Neo4j。属性图与 Cypher 是当前的实现
+基础；系统是现有原型，部分机制仍在实现，评测方案仍在商定。
 
 ## 从哪里了解这个研究
 
-- [`AGENTS.md`](AGENTS.md) — 当前研究方向、核心问题、设计边界与评估原则的权威表述。
-- [`paper/narrative-draft.md`](paper/narrative-draft.md) — 正在演进的论文叙事草稿
-  （动机、挑战、设计与章节大纲）。
-- [`docs/discussions/`](docs/discussions/) — 设计讨论记录，最新的总体梳理见
-  `2026-10-05-versioned-knowledge-management.md`；其中未与用户确认的提议均为暂定。
-- [`docs/designs/v2`](docs/designs/v2) 详细系统设计
-  笔记与外部材料；`references/refs.bib` 是论文元数据的跟踪来源。
-- `packages/`（`graph-doc`、`graph-vc` 等）与 `experiments/` — 正在搭建的实现与
-  实验代码。
+- [`AGENTS.md`](AGENTS.md)：当前研究方向、挑战、设计边界、工程现状与评测的权威表述。
+- [`paper/narrative-draft.md`](paper/narrative-draft.md)：论文叙事草稿（动机、挑战、
+  贡献与章节大纲）。
+- [`docs/designs/v2/evaluation_draft.md`](docs/designs/v2/evaluation_draft.md)：评测设计。
+- [`docs/discussions/2026-10-10-challenges-and-classical-mechanisms.md`](docs/discussions/2026-10-10-challenges-and-classical-mechanisms.md)：
+  挑战与经典机制的对照、分歧的分层处理、现有工程的复用。
+- [`docs/designs/v2`](docs/designs/v2)：详细系统设计（数据模型、Commit 契约、算子、
+  版本接口、项目视图）。
+- `references/`：外部材料；`references/refs.bib` 是论文元数据的跟踪来源。
+- `packages/`（`graph-doc`、`graph-vc` 等）与 `experiments/e09`：原型实现，以及 T1 的
+  实验准备。
 
 ## Setup
 
