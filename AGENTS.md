@@ -54,30 +54,60 @@ premise and must be verified on the chosen corpus.
 - **C4. Isolated work, shared delivery.** Project work runs on a stable base and
   delivers results back without breaking the shared store; any historical state
   remains reachable.
+- **C5. Discoverability across writers.** Content a writer stored for one
+  purpose must be findable by a reader with another purpose who does not know
+  the writer's wording, granularity, or organization. Under a bounded context,
+  readers combine structural navigation with semantic search.
+
+C1–C4 are on the write side and answer "trust" and "build on"; C5 is on the
+read side and answers "find". The numbering follows the order the challenges
+were raised; whether the paper reorders them as find → trust → build on is
+open.
 
 Without identity, contracts, provenance, and versions, shared accumulation is
 expected to degrade as writers and writes grow: duplicate and wrongly merged
-entities, dangling references, unnoticed conflicts, and stale artifacts, so that
-downstream answers become wrong without looking wrong. This is the core
+entities, dangling references, unnoticed conflicts, and stale artifacts. Content
+stored on each writer's own terms is hard to find for readers with other
+purposes. Downstream answers become wrong without looking wrong. This is the core
 hypothesis (T1).
 
 ### Approach and positioning
 
-PaperWeave is a middleware offered to general-purpose agents through MCP. It
-enforces identity, contracts, provenance, and versions on every write.
+PaperWeave is a middleware offered to general-purpose agents through MCP. On
+the write side, it enforces identity, contracts, provenance, and versions. On
+the read side, it offers an intent-derived retrieval surface and access
+operators, so readers can find what others stored for other purposes.
+
+- **Intents are the workload root.** Six research intents I1–I6 (find work and
+  methods; understand mechanisms and conditions; organize results and judge
+  comparability; synthesize routes and findings; verify claims; obtain
+  implementation resources) each have public task sources. They are decomposed
+  in `docs/designs/v2/intents_decompose.md` and serve three uses:
+  - they generate writer tasks, so writers with different intents write to the
+    same objects at different granularity, and $K$ is intent diversity;
+  - they generate reader probes, which are task-grounded rather than tailored to
+    this system;
+  - they determine the retrieval surface, that is, which fields and relations
+    must be searchable.
+
+  Intents are a workload, not a capability checklist. "The operators support
+  I1–I6" is not a contribution by itself, since a general graph store with
+  suitable queries supports them too.
 
 - **Classical mechanisms, adapted.** Each mechanism has a classical predecessor:
   entity resolution and natural keys (C1); provenance, W3C PROV, and
   nanopublications (C2); materialized-view invalidation, truth maintenance, and
   coexisting alternatives as in Trio, CRDT multi-value registers, and Wikidata
   ranks (C3); check-out/check-in, optimistic validation, and data versioning
-  (C4). Cite them explicitly. The contribution is selecting and adapting them for
+  (C4); dataspaces' pay-as-you-go integration, keyword search over databases,
+  and hybrid retrieval (C5). Cite them explicitly. The contribution is selecting and adapting them for
   agent writers and showing empirically which ones matter, not new concurrency,
   provenance, or versioning theory. What agent writers change: adjudication
   returns to the writer at write time; errors are semantic and fluent;
   recomputing derived content is costly and nondeterministic, so staleness is
   flagged, not maintained; readers will not query provenance, so conflicts and
-  staleness must travel with query results; the MCP interface is the contract,
+  staleness must travel with query results; readers are context-bounded agents
+  who were not present at the writes; the MCP interface is the contract,
   and bypass is measurable. See
   `docs/discussions/2026-10-10-challenges-and-classical-mechanisms.md`.
 - **Meta-model, not schema.** The contribution is the accumulation meta-model
@@ -118,6 +148,22 @@ enforces identity, contracts, provenance, and versions on every write.
   evaluated inside T1's multi-writer timelines, not as standalone feature
   checks.
 
+### Contributions
+
+1. **Problem and workload.** The formulation of shared accumulation by
+   uncoordinated agent writers in research. An intent-grounded workload: writer
+   tasks and reader probes derived from I1–I6, plus events of revision,
+   retraction, divergence, and branching.
+2. **PaperWeave design (C1–C5), adapting classical mechanisms to agent
+   writers.**
+   - Read side: the accumulation meta-model, with a retrieval surface and
+     access operators derived from the intents.
+   - Write side: operator contracts; grounded revision and interpretive
+     coexistence; dependency-based staleness; versioned shared and project
+     states with fork and push.
+3. **Evaluation.** T1 against strong baselines, per-mechanism ablations, and
+   T2.
+
 ## System and Engineering Status
 
 The existing prototype is the system; no new subsystem is planned for the
@@ -129,7 +175,7 @@ current story. E09 is experiment preparation for T1, not a finished product.
 | graph-doc + Commit (dry_run → blocking items → `confirm`) | `packages/graph-doc`, `experiments/e09/src/e09/commit/`, `docs/designs/v2/commit_contract.md` | C1 write-time adjudication by the writer |
 | graph-vc changesets with before/after values, commit records, revert | `packages/graph-vc` | Unified write log; carrier of C3 revisions |
 | Log / Show / Diff / AsOf | `experiments/e09/src/e09/interfaces/`, `docs/designs/v2/versioning_interfaces.md` | Historical inspection |
-| DB operators: Search, Resolve, Traverse, ReadEvidence, Commit | `experiments/e09/src/e09/operators/db/`, `docs/designs/v2/operators.md` | Read side for readers who were not there |
+| DB operators: Search, Resolve, Traverse, ReadEvidence, Commit | `experiments/e09/src/e09/operators/db/`, `docs/designs/v2/operators.md` | C5 read side for readers who were not there |
 | Agent operators → Artifact (`USED`, `Material` hash) | `experiments/e09/src/e09/operators/agent/`, `experiments/e09/src/e09/artifact/` | C2; the interpretive layer coexists by construction |
 | `_stale` computed at read time | `experiments/e09/src/e09/artifact/stale.py` | C3 staleness indication |
 | MCP server, pi workspace | `experiments/e09/src/e09/mcp/`, `make workspace` | Writers are pi session sequences with fixed tasks |
@@ -196,10 +242,11 @@ in turn. Details are in `docs/designs/v2/evaluation_draft.md`.
 
 Open (to agree before implementation):
 
-- what $K$ (the number of writers) operationalizes;
 - the primary metric comparable across all arms (candidate: downstream
   correctness, with store health as a diagnostic);
-- probe design targeting multi-writer intersections;
+- concrete writer tasks and probes. $K$ is intent diversity, and probes come
+  from I1–I6 at multi-writer intersections (`intents_decompose.md` §7.1); the
+  instances are not yet chosen;
 - whether bootstrap versus empty start is a factor;
 - whether phase 1 of T1 uses direct writes only, with Fork / Merge events
   added later;
@@ -345,7 +392,8 @@ Current documents:
   challenges versus classical mechanisms, and engineering reuse.
 - `docs/designs/v2/` — system design: `graph_model_v2.md`, `commit_contract.md`,
   `operators.md`, `versioning_interfaces.md`, `project_views.md`,
-  `extraction_principles.md`, `intents_decompose.md`.
+  `extraction_principles.md`, and `intents_decompose.md`, which is the
+  workload root: I1–I6, writer tasks, reader probes, and the retrieval surface.
 - `docs/discussions/2026-10-05-versioned-knowledge-management.md` — version
   mechanism memo referenced by the design docs.
 
